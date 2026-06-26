@@ -27,10 +27,19 @@ the overlay → DecisionLoop runs: capture → think → act → wait.
 | A | Foundation + UI shell (deps, manifest, all resources) | done | dbc4b0e |
 | B | Data + brain (Game, Settings repos; OpenAI-compatible brain; core/Action) | done | 77f4573 |
 | C | Capture + accessibility + core loop (ScreenCaptureManager, ML Kit OCR, AccessibilityService, GestureDispatcher, DecisionLoop, AutopilotController) | done | 0845eee |
-| D | UI + overlay + wiring (Activities, GameListAdapter, OverlayService) | done | (this commit) |
-| E | README + verification pass | not done | - |
+| D | UI + overlay + wiring (Activities, GameListAdapter, OverlayService) | done | f0a5fb5 |
+| E | README + verification pass | done | (this commit) |
 
-**Next batch: E — README + verification pass.**
+**Build is complete.** All five batches landed. Verification checks
+(package decls vs directories, banned tokens in `app/build.gradle.kts`,
+DecisionLoop Wait→extraWaitMs behavior, manifest-vs-source class
+coverage) all pass. 32 Kotlin files + 26 XML resources.
+
+Open follow-ups (not blockers; flagged in README "Limitations"):
+- Rotation handling (recreate VirtualDisplay on configuration change).
+- Per-game icon override (currently always uses PackageManager icon).
+- Anthropic / Gemini brain implementations (would each need a new
+  `Brain` impl since they aren't OpenAI-shaped).
 
 Note: `core/Action.kt` was moved up from Batch C to Batch B because the
 brain depends on it (`BrainDecision.actions: List<Action>`).
