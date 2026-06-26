@@ -26,11 +26,11 @@ the overlay → DecisionLoop runs: capture → think → act → wait.
 |------|------------------------------------------------|--------|---------|
 | A | Foundation + UI shell (deps, manifest, all resources) | done | dbc4b0e |
 | B | Data + brain (Game, Settings repos; OpenAI-compatible brain; core/Action) | done | 77f4573 |
-| C | Capture + accessibility + core loop (ScreenCaptureManager, ML Kit OCR, AccessibilityService, GestureDispatcher, DecisionLoop, AutopilotController) | done | (this commit) |
-| D | UI + overlay + wiring (Activities, GameListAdapter, OverlayService) | not done | - |
+| C | Capture + accessibility + core loop (ScreenCaptureManager, ML Kit OCR, AccessibilityService, GestureDispatcher, DecisionLoop, AutopilotController) | done | 0845eee |
+| D | UI + overlay + wiring (Activities, GameListAdapter, OverlayService) | done | (this commit) |
 | E | README + verification pass | not done | - |
 
-**Next batch: D — UI activities + overlay service + App class.**
+**Next batch: E — README + verification pass.**
 
 Note: `core/Action.kt` was moved up from Batch C to Batch B because the
 brain depends on it (`BrainDecision.actions: List<Action>`).
