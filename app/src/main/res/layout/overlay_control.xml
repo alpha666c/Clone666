@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_overlay_chip"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <View
+        android:id="@+id/statusDot"
+        android:layout_width="10dp"
+        android:layout_height="10dp"
+        android:layout_marginStart="6dp"
+        android:layout_marginEnd="8dp"
+        android:background="@color/status_idle" />
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/white"
+        android:textSize="12sp"
+        android:text="@string/overlay_state_idle" />
+
+    <ImageView
+        android:id="@+id/startBtn"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="10dp"
+        android:contentDescription="@string/start"
+        android:padding="6dp"
+        android:src="@drawable/ic_play"
+        app:tint="@color/white"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+    <ImageView
+        android:id="@+id/stopBtn"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:contentDescription="@string/stop"
+        android:padding="6dp"
+        android:src="@drawable/ic_stop"
+        app:tint="@color/white"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+    <ImageView
+        android:id="@+id/closeBtn"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:contentDescription="@string/quit"
+        android:padding="6dp"
+        android:src="@drawable/ic_close"
+        app:tint="@color/white"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
+</LinearLayout>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Game Autopilot</string>
+    <string name="accessibility_label">Game Autopilot Accessibility</string>
+
+    <string name="settings">Settings</string>
+    <string name="permissions">Permissions</string>
+    <string name="add_game">Add Game</string>
+    <string name="launch_autopilot">Launch &amp; Autopilot</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="quit">Quit</string>
+
+    <string name="empty_games">No games yet. Tap + to add one.</string>
+    <string name="game_name_hint">Game name (e.g. Coin Master)</string>
+    <string name="game_prompt_hint">What should the AI do? (per-game knowledge + goal)</string>
+    <string name="tick_interval_hint">Tick interval (ms)</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="pick_app">Pick installed app</string>
+
+    <string name="settings_api_provider">API provider</string>
+    <string name="settings_base_url">Base URL</string>
+    <string name="settings_api_key">API key</string>
+    <string name="settings_model">Model</string>
+    <string name="settings_max_actions_per_min">Max actions / minute</string>
+    <string name="settings_only_act_on_target">Only act when target game is foreground</string>
+    <string name="settings_clear_api_key">Clear API key</string>
+    <string name="settings_api_key_set">API key is set</string>
+    <string name="settings_api_key_not_set">No API key configured</string>
+
+    <string name="perm_accessibility">Accessibility service</string>
+    <string name="perm_overlay">Display over other apps</string>
+    <string name="perm_notifications">Post notifications</string>
+    <string name="perm_open">Open</string>
+    <string name="perm_granted">Granted</string>
+    <string name="perm_missing">Not granted</string>
+
+    <string name="overlay_state_idle">Idle</string>
+    <string name="overlay_state_running">Running</string>
+    <string name="overlay_state_thinking">Thinking…</string>
+    <string name="overlay_state_acting">Acting</string>
+    <string name="overlay_state_error">Error</string>
+
+    <string name="notif_channel_overlay">Autopilot overlay</string>
+    <string name="notif_overlay_title">Game Autopilot active</string>
+    <string name="notif_overlay_text">Tap Stop in the floating chip to pause.</string>
+
+    <string name="default_system_prompt">You are an autopilot AI playing this Android game on the user\'s behalf. Make conservative decisions, prefer waiting when unsure, and never tap outside the screen bounds.</string>
+
+    <string name="error_no_api_key">Set an API key in Settings first.</string>
+    <string name="error_no_brain_response">Brain returned no usable action.</string>
+</resources>
