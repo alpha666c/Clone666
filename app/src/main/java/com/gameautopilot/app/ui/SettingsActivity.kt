@@ -23,6 +23,8 @@ class SettingsActivity : AppCompatActivity() {
         val clearKeyBtn = findViewById<MaterialButton>(R.id.clearKeyBtn)
         val rateInput = findViewById<TextInputEditText>(R.id.rateInput)
         val onlyTargetSwitch = findViewById<MaterialSwitch>(R.id.onlyTargetSwitch)
+        val somSwitch = findViewById<MaterialSwitch>(R.id.somSwitch)
+        val logCyclesSwitch = findViewById<MaterialSwitch>(R.id.logCyclesSwitch)
         val providerSwitch = findViewById<MaterialSwitch>(R.id.providerSwitch)
         val saveBtn = findViewById<MaterialButton>(R.id.saveBtn)
 
@@ -33,6 +35,8 @@ class SettingsActivity : AppCompatActivity() {
         modelInput.setText(current.model)
         rateInput.setText(current.maxActionsPerMinute.toString())
         onlyTargetSwitch.isChecked = current.onlyActOnTarget
+        somSwitch.isChecked = current.useSetOfMarks
+        logCyclesSwitch.isChecked = current.logCycles
         providerSwitch.isChecked = current.useNvidia
         apiKeyInput.setText("") // never echo back stored key
         apiKeyStatus.text = getString(
@@ -76,7 +80,9 @@ class SettingsActivity : AppCompatActivity() {
                 apiKey = if (typedKey.isNotBlank()) typedKey else repo.current().apiKey,
                 maxActionsPerMinute = rateInput.text?.toString()?.toIntOrNull() ?: 30,
                 onlyActOnTarget = onlyTargetSwitch.isChecked,
-                useNvidia = providerSwitch.isChecked
+                useNvidia = providerSwitch.isChecked,
+                useSetOfMarks = somSwitch.isChecked,
+                logCycles = logCyclesSwitch.isChecked
             )
             repo.save(merged)
             apiKeyInput.setText("")

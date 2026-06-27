@@ -21,7 +21,9 @@ class SettingsRepository(context: Context) {
         apiKey = prefs.getString(KEY_API_KEY, "") ?: "",
         maxActionsPerMinute = prefs.getInt(KEY_RATE, 30).coerceIn(1, 600),
         onlyActOnTarget = prefs.getBoolean(KEY_ONLY_TARGET, true),
-        useNvidia = prefs.getBoolean(KEY_USE_NVIDIA, false)
+        useNvidia = prefs.getBoolean(KEY_USE_NVIDIA, false),
+        useSetOfMarks = prefs.getBoolean(KEY_USE_SOM, true),
+        logCycles = prefs.getBoolean(KEY_LOG_CYCLES, true)
     )
 
     fun current(): Settings = _settings.value
@@ -34,6 +36,8 @@ class SettingsRepository(context: Context) {
             .putInt(KEY_RATE, s.maxActionsPerMinute.coerceIn(1, 600))
             .putBoolean(KEY_ONLY_TARGET, s.onlyActOnTarget)
             .putBoolean(KEY_USE_NVIDIA, s.useNvidia)
+            .putBoolean(KEY_USE_SOM, s.useSetOfMarks)
+            .putBoolean(KEY_LOG_CYCLES, s.logCycles)
             .apply()
         _settings.value = read()
     }
@@ -51,5 +55,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_RATE = "maxActionsPerMinute"
         private const val KEY_ONLY_TARGET = "onlyActOnTarget"
         private const val KEY_USE_NVIDIA = "useNvidia"
+        private const val KEY_USE_SOM = "useSetOfMarks"
+        private const val KEY_LOG_CYCLES = "logCycles"
     }
 }

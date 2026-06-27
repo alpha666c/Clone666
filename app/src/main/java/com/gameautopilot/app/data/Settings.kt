@@ -6,7 +6,9 @@ data class Settings(
     val apiKey: String = "",
     val maxActionsPerMinute: Int = 30,
     val onlyActOnTarget: Boolean = true,
-    val useNvidia: Boolean = false
+    val useNvidia: Boolean = false,
+    val useSetOfMarks: Boolean = true,
+    val logCycles: Boolean = true
 ) {
     fun hasApiKey(): Boolean = apiKey.isNotBlank()
 

@@ -26,6 +26,8 @@
     <string name="settings_model">Model</string>
     <string name="settings_max_actions_per_min">Max actions / minute</string>
     <string name="settings_only_act_on_target">Only act when target game is foreground</string>
+    <string name="settings_use_set_of_marks">Use set-of-marks prompting (recommended)</string>
+    <string name="settings_log_cycles">Log decision cycles to disk (last 7 days)</string>
     <string name="settings_clear_api_key">Clear API key</string>
     <string name="settings_api_key_set">API key is set</string>
     <string name="settings_api_key_not_set">No API key configured</string>

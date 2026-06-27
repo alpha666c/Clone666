@@ -9,7 +9,8 @@ class ActionDispatcher(
     private val screenWidth: () -> Int,
     private val screenHeight: () -> Int
 ) {
-    suspend fun dispatch(action: Action): Boolean {
+
+    suspend fun dispatch(action: Action, marks: List<MarkBox>): Boolean {
         val svc = AutopilotAccessibilityService.get()
         if (svc == null) {
             Logger.w("Cannot dispatch — accessibility service not connected")
@@ -18,16 +19,21 @@ class ActionDispatcher(
         val w = screenWidth()
         val h = screenHeight()
         return when (action) {
-            is Action.Tap -> {
-                if (!inBounds(action.x, action.y, w, h)) {
-                    Logger.w("Skipping out-of-bounds tap (${action.x},${action.y})")
-                    return false
-                }
-                GestureDispatcher.tap(svc, action.x.toFloat(), action.y.toFloat(), action.durationMs)
+            is Action.Tap -> tap(svc, action.x, action.y, action.durationMs, w, h)
+            is Action.LongPress -> tap(svc, action.x, action.y, action.durationMs, w, h)
+            is Action.TapMark -> {
+                val m = marks.firstOrNull { it.id == action.markId }
+                if (m == null) {
+                    Logger.w("TapMark id=${action.markId} not in current marks (size=${marks.size})")
+                    false
+                } else tap(svc, m.cx, m.cy, 60, w, h)
             }
-            is Action.LongPress -> {
-                if (!inBounds(action.x, action.y, w, h)) return false
-                GestureDispatcher.tap(svc, action.x.toFloat(), action.y.toFloat(), action.durationMs)
+            is Action.LongPressMark -> {
+                val m = marks.firstOrNull { it.id == action.markId }
+                if (m == null) {
+                    Logger.w("LongPressMark id=${action.markId} not in current marks")
+                    false
+                } else tap(svc, m.cx, m.cy, action.durationMs, w, h)
             }
             is Action.Swipe -> {
                 if (!inBounds(action.x1, action.y1, w, h) || !inBounds(action.x2, action.y2, w, h)) {
@@ -41,6 +47,7 @@ class ActionDispatcher(
                     action.durationMs
                 )
             }
+            is Action.TypeText -> svc.typeOnFocused(action.text, action.submit)
             Action.Back -> GestureDispatcher.back(svc)
             is Action.Wait -> {
                 delay(action.ms.coerceIn(0L, 60_000L))
@@ -48,6 +55,18 @@ class ActionDispatcher(
             }
             Action.NoOp -> true
         }
+    }
+
+    private suspend fun tap(
+        svc: AutopilotAccessibilityService,
+        x: Int, y: Int, dur: Long,
+        w: Int, h: Int
+    ): Boolean {
+        if (!inBounds(x, y, w, h)) {
+            Logger.w("Skipping out-of-bounds tap ($x,$y) screen=${w}x$h")
+            return false
+        }
+        return GestureDispatcher.tap(svc, x.toFloat(), y.toFloat(), dur)
     }
 
     private fun inBounds(x: Int, y: Int, w: Int, h: Int): Boolean =

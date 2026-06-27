@@ -6,5 +6,7 @@ data class ScreenSnapshot(
     val foregroundPackage: String?,
     val ocrLines: List<String>,
     val a11yLines: List<String>,
-    val screenshotBase64Jpeg: String
+    val marks: List<MarkBox>,
+    val screenshotBase64Jpeg: String,
+    val perceptualHash: Long
 )

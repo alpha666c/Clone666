@@ -28,18 +28,35 @@ the overlay → DecisionLoop runs: capture → think → act → wait.
 | B | Data + brain (Game, Settings repos; OpenAI-compatible brain; core/Action) | done | 77f4573 |
 | C | Capture + accessibility + core loop (ScreenCaptureManager, ML Kit OCR, AccessibilityService, GestureDispatcher, DecisionLoop, AutopilotController) | done | 0845eee |
 | D | UI + overlay + wiring (Activities, GameListAdapter, OverlayService) | done | f0a5fb5 |
-| E | README + verification pass | done | (this commit) |
+| E | README + verification pass | done | 0770aef |
+| F | Set-of-marks + TypeText + stuck-state + cycle log | done | (this commit) |
+| G | Debug overlay + a11y fast path | not done | - |
+| H | Reasoner/ScreenReader/ActionExecutor interface refactor | not done | - |
 
-**Build is complete.** All five batches landed. Verification checks
-(package decls vs directories, banned tokens in `app/build.gradle.kts`,
-DecisionLoop Wait→extraWaitMs behavior, manifest-vs-source class
-coverage) all pass. 32 Kotlin files + 26 XML resources.
+**Next batch: G — debug overlay + a11y fast path.**
 
-Open follow-ups (not blockers; flagged in README "Limitations"):
-- Rotation handling (recreate VirtualDisplay on configuration change).
-- Per-game icon override (currently always uses PackageManager icon).
-- Anthropic / Gemini brain implementations (would each need a new
-  `Brain` impl since they aren't OpenAI-shaped).
+## Architecture upgrades landed in F
+
+- **Set-of-marks prompting.** Each tick, `CandidateExtractor` builds up
+  to 80 `MarkBox` candidates from (clickable a11y nodes ∪ OCR line
+  boxes), de-duplicated by IoU > 0.6, sorted by area DESC. The
+  screenshot sent to the brain has translucent numbered rectangles
+  drawn on top by `SetOfMarksOverlay`. The brain's system prompt now
+  strongly prefers `tapMark`/`longPressMark`/`typeText` over raw
+  pixel coordinates — VLMs are much better at picking IDs than coords.
+- **`Action.TypeText`** routed via
+  `AutopilotAccessibilityService.typeOnFocused()` →
+  `AccessibilityNodeInfo.ACTION_SET_TEXT` on the focused editable
+  node, with optional `IME_ENTER` submit.
+- **Stuck-state circuit breaker.** `DecisionLoop` tracks a 3-tick
+  rolling buffer of `dHash` values (`util/PerceptualHash`). If all
+  three are within Hamming distance 5, sets `BrainContext.stuckHint`
+  so the brain knows to try a recovery action; trips into
+  `LoopPhase.ERROR` after 6 consecutive stuck ticks.
+- **Cycle log.** `core/CycleLog` writes one JSONL line per tick to
+  `filesDir/cycles/YYYY-MM-DD.log` (timestamp, hash, delta, mark count,
+  thought, action labels, dispatch results, foreground pkg). Auto-prunes
+  after 7 days. Toggle in Settings.
 
 Note: `core/Action.kt` was moved up from Batch C to Batch B because the
 brain depends on it (`BrainDecision.actions: List<Action>`).

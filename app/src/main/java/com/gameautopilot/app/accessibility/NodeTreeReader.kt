@@ -7,23 +7,37 @@ object NodeTreeReader {
 
     private const val MAX_NODES = 80
 
-    fun read(service: AutopilotAccessibilityService): List<String> {
-        val root = service.rootInActiveWindow ?: return emptyList()
-        val out = ArrayList<String>(64)
+    data class ClickableNode(
+        val text: String,
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int
+    )
+
+    data class A11yResult(
+        val lines: List<String>,
+        val clickables: List<ClickableNode>
+    )
+
+    fun read(service: AutopilotAccessibilityService): A11yResult {
+        val root = service.rootInActiveWindow ?: return A11yResult(emptyList(), emptyList())
+        val lines = ArrayList<String>(64)
+        val clickables = ArrayList<ClickableNode>(32)
         try {
-            traverse(root, out, 0)
+            traverse(root, lines, clickables)
         } finally {
             runCatching { root.recycle() }
         }
-        return out.take(MAX_NODES)
+        return A11yResult(lines.take(MAX_NODES), clickables)
     }
 
     private fun traverse(
         node: AccessibilityNodeInfo?,
-        out: MutableList<String>,
-        depth: Int
+        lines: MutableList<String>,
+        clickables: MutableList<ClickableNode>
     ) {
-        if (node == null || out.size >= MAX_NODES) return
+        if (node == null || lines.size >= MAX_NODES) return
         val text = node.text?.toString().orEmpty().trim()
         val cd = node.contentDescription?.toString().orEmpty().trim()
         val label = when {
@@ -32,15 +46,26 @@ object NodeTreeReader {
             cd.isNotEmpty() -> cd
             else -> ""
         }
+        val r = Rect()
+        node.getBoundsInScreen(r)
         if (label.isNotEmpty() || node.isClickable) {
-            val r = Rect()
-            node.getBoundsInScreen(r)
             val displayLabel = label.ifEmpty { "(unlabeled)" }.replace('\n', ' ').take(80)
-            out.add("[${r.left},${r.top},${r.right},${r.bottom}] click=${if (node.isClickable) "Y" else "N"} \"$displayLabel\"")
+            lines.add(
+                "[${r.left},${r.top},${r.right},${r.bottom}] " +
+                    "click=${if (node.isClickable) "Y" else "N"} \"$displayLabel\""
+            )
+        }
+        if (node.isClickable && r.width() > 0 && r.height() > 0) {
+            clickables.add(
+                ClickableNode(
+                    text = label.ifEmpty { "(unlabeled)" }.take(80),
+                    left = r.left, top = r.top, right = r.right, bottom = r.bottom
+                )
+            )
         }
         for (i in 0 until node.childCount) {
-            traverse(node.getChild(i), out, depth + 1)
-            if (out.size >= MAX_NODES) return
+            traverse(node.getChild(i), lines, clickables)
+            if (lines.size >= MAX_NODES) return
         }
     }
 }

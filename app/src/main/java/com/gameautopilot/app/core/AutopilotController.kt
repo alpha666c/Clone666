@@ -8,6 +8,8 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import com.gameautopilot.app.accessibility.AutopilotAccessibilityService
+import com.gameautopilot.app.accessibility.NodeTreeReader
 import com.gameautopilot.app.brain.Brain
 import com.gameautopilot.app.brain.BrainFactory
 import com.gameautopilot.app.capture.ScreenCaptureManager
@@ -16,9 +18,10 @@ import com.gameautopilot.app.data.Game
 import com.gameautopilot.app.data.Settings
 import com.gameautopilot.app.data.SettingsRepository
 import com.gameautopilot.app.util.Logger
+import com.gameautopilot.app.util.PerceptualHash
+import com.gameautopilot.app.vision.CandidateExtractor
 import com.gameautopilot.app.vision.OcrEngine
-import com.gameautopilot.app.accessibility.AutopilotAccessibilityService
-import com.gameautopilot.app.accessibility.NodeTreeReader
+import com.gameautopilot.app.vision.SetOfMarksOverlay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,11 +35,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * Singleton orchestrator. Owns the brain, screen capture, OCR engine,
- * dispatcher, rate limiter, and the decision-loop coroutine.
- * Surface for Activities and OverlayService.
- */
 class AutopilotController private constructor(private val appContext: Context) {
 
     private val settingsRepo = SettingsRepository(appContext)
@@ -48,6 +46,9 @@ class AutopilotController private constructor(private val appContext: Context) {
         screenWidth = { capture.width },
         screenHeight = { capture.height }
     )
+    private val cycleLog = CycleLog(appContext).apply {
+        setEnabled(settingsRepo.current().logCycles)
+    }
 
     @Volatile var currentGame: Game? = null
         private set
@@ -70,10 +71,6 @@ class AutopilotController private constructor(private val appContext: Context) {
         Logger.i("Selected game: ${game.name} (${game.packageName})")
     }
 
-    /**
-     * Called by OverlayService after MediaProjection consent is granted.
-     * Must be called from the FGS context with the result from the activity.
-     */
     fun attachProjection(resultCode: Int, data: Intent) {
         val mpm = appContext.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
             as MediaProjectionManager
@@ -103,9 +100,11 @@ class AutopilotController private constructor(private val appContext: Context) {
         if (loopJob?.isActive == true) return true
 
         rate.maxPerMinute = s.maxActionsPerMinute
+        cycleLog.setEnabled(s.logCycles)
         brain = BrainFactory.create(s)
+        val useMarks = s.useSetOfMarks
         val loop = DecisionLoop(
-            takeSnapshot = { buildSnapshot() },
+            takeSnapshot = { buildSnapshot(useMarks) },
             brain = brain!!,
             dispatcher = dispatcher,
             recent = recent,
@@ -115,7 +114,22 @@ class AutopilotController private constructor(private val appContext: Context) {
             gamePackage = game.packageName,
             gameSystemPrompt = game.systemPrompt,
             onlyActOnTargetPackage = s.onlyActOnTarget,
-            onState = { phase, note -> updatePhase(phase, note) }
+            onState = { phase, note -> updatePhase(phase, note) },
+            onCycle = { rec ->
+                cycleLog.write(
+                    CycleLog.CycleEntry(
+                        timestampMs = System.currentTimeMillis(),
+                        gamePackage = game.packageName,
+                        foregroundPackage = rec.snapshot.foregroundPackage,
+                        hash = rec.snapshot.perceptualHash,
+                        deltaSincePrev = rec.deltaSincePrev,
+                        markCount = rec.snapshot.marks.size,
+                        thought = rec.thought,
+                        actions = rec.actionLabels,
+                        dispatchOk = rec.dispatchOk
+                    )
+                )
+            }
         )
         _state.value = AutopilotState.Running(LoopPhase.IDLE, null)
         loopJob = scope.launch {
@@ -158,27 +172,44 @@ class AutopilotController private constructor(private val appContext: Context) {
         }
     }
 
-    private suspend fun buildSnapshot(): ScreenSnapshot? = withContext(Dispatchers.Default) {
-        val bmp: Bitmap = capture.captureLatest() ?: return@withContext null
-        val w = bmp.width
-        val h = bmp.height
-        val fg = AutopilotAccessibilityService.get()?.foregroundPackage
-        val a11y = AutopilotAccessibilityService.get()?.let { NodeTreeReader.read(it) }.orEmpty()
-        val ocrLines = runCatching { ocr.extract(bmp) }.getOrElse {
-            Logger.w("OCR failed: ${it.message}")
-            emptyList()
+    private suspend fun buildSnapshot(useMarks: Boolean): ScreenSnapshot? =
+        withContext(Dispatchers.Default) {
+            val bmp: Bitmap = capture.captureLatest() ?: return@withContext null
+            val w = bmp.width
+            val h = bmp.height
+            val svc = AutopilotAccessibilityService.get()
+            val fg = svc?.foregroundPackage
+            val a11y = svc?.let { NodeTreeReader.read(it) }
+                ?: NodeTreeReader.A11yResult(emptyList(), emptyList())
+            val ocrResult = runCatching { ocr.extract(bmp) }.getOrElse {
+                Logger.w("OCR failed: ${it.message}")
+                OcrEngine.OcrResult(emptyList(), emptyList())
+            }
+            val marks = if (useMarks) {
+                CandidateExtractor.build(a11y.clickables, ocrResult.boxes, maxMarks = 80)
+            } else {
+                emptyList()
+            }
+            val hash = PerceptualHash.dHash(bmp)
+            val toEncode = if (useMarks && marks.isNotEmpty()) {
+                SetOfMarksOverlay.annotate(bmp, marks)
+            } else {
+                bmp
+            }
+            val base64 = ScreenshotEncoder.encode(toEncode)
+            if (toEncode !== bmp) toEncode.recycle()
+            bmp.recycle()
+            ScreenSnapshot(
+                width = w,
+                height = h,
+                foregroundPackage = fg,
+                ocrLines = ocrResult.lines,
+                a11yLines = a11y.lines,
+                marks = marks,
+                screenshotBase64Jpeg = base64,
+                perceptualHash = hash
+            )
         }
-        val base64 = ScreenshotEncoder.encode(bmp)
-        bmp.recycle()
-        ScreenSnapshot(
-            width = w,
-            height = h,
-            foregroundPackage = fg,
-            ocrLines = ocrLines,
-            a11yLines = a11y,
-            screenshotBase64Jpeg = base64
-        )
-    }
 
     private fun displayMetrics(): Triple<Int, Int, Int> {
         val wm = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -196,9 +227,7 @@ class AutopilotController private constructor(private val appContext: Context) {
     }
 
     fun onConfigurationChanged(@Suppress("UNUSED_PARAMETER") cfg: Configuration) {
-        // Reserved hook for rotation handling — re-creating the VirtualDisplay
-        // is outside v1 scope (would require pausing the loop, tearing the
-        // capture down, and restarting at the new dimensions).
+        // Reserved hook for rotation handling.
     }
 
     companion object {
