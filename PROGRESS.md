@@ -29,11 +29,53 @@ the overlay → DecisionLoop runs: capture → think → act → wait.
 | C | Capture + accessibility + core loop (ScreenCaptureManager, ML Kit OCR, AccessibilityService, GestureDispatcher, DecisionLoop, AutopilotController) | done | 0845eee |
 | D | UI + overlay + wiring (Activities, GameListAdapter, OverlayService) | done | f0a5fb5 |
 | E | README + verification pass | done | 0770aef |
-| F | Set-of-marks + TypeText + stuck-state + cycle log | done | (this commit) |
-| G | Debug overlay + a11y fast path | not done | - |
+| F | Set-of-marks + TypeText + stuck-state + cycle log | done | 4740b3d |
+| G | Debug overlay + a11y fast path | **wip** | (this commit) |
 | H | Reasoner/ScreenReader/ActionExecutor interface refactor | not done | - |
 
-**Next batch: G — debug overlay + a11y fast path.**
+**Next batch: finish G, then H.**
+
+## Batch G — in progress (paused before session limit)
+
+Two new files are on disk and committed but **not yet wired in**:
+
+- `core/A11yFastPath.kt` — cheap heuristic: after a successful TapMark
+  the loop remembers the label; on subsequent ticks with the same
+  label still visible AND small perceptual-hash delta, re-issues the
+  tap without calling the brain. Capped at 3 consecutive fast-path
+  ticks. Created but `DecisionLoop` does not call it yet.
+- `overlay/DebugOverlayView.kt` — full-screen non-interactive View
+  that draws current SoM mark boxes + highlights the last-tapped
+  mark in red. Created but `OverlayService` does not add it to the
+  WindowManager yet.
+
+**To finish G in the next session:**
+
+1. `core/AutopilotController.kt`: expose a `debugFrame: SharedFlow<DebugFrame>`
+   (where `DebugFrame(marks, lastTappedMarkId)`) emitted from
+   `buildSnapshot` / after each dispatch.
+2. `overlay/OverlayService.kt`: when `Settings.showDebugOverlay` is on
+   (new setting), add a second WindowManager view of type
+   `TYPE_APPLICATION_OVERLAY` with flags
+   `FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCHABLE | FLAG_LAYOUT_NO_LIMITS`
+   sized to MATCH_PARENT, hosting `DebugOverlayView`. Collect the
+   debug flow into `view.update(...)`. Remove on quit.
+3. `core/DecisionLoop.kt`: before calling `brain.decide`, ask the
+   `A11yFastPath` instance (held in the loop) for a fast-path action
+   list; if non-null, dispatch those and skip the brain call. On
+   normal brain decisions, call `fastPath.recordBrainDispatch(...)`.
+   Add fastPath as a constructor parameter.
+4. `core/AutopilotController.start()`: instantiate `A11yFastPath()` and
+   pass to DecisionLoop. Reset it in `quit()`.
+5. `data/Settings` + `SettingsRepository` + `SettingsActivity` + layout
+   + strings: add `showDebugOverlay: Boolean = false` and
+   `useFastPath: Boolean = true` toggles.
+
+## Batch H — still not started
+
+Extract `ScreenReader`, `ActionExecutor`, `Reasoner` interfaces. The
+existing classes become default impls. Lets us later add Shizuku
+executor / on-device Gemini-Nano reasoner without touching the loop.
 
 ## Architecture upgrades landed in F
 
