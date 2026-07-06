@@ -35,9 +35,26 @@ the overlay → DecisionLoop runs: capture → think → act → wait.
 | F | Set-of-marks + TypeText + stuck-state + cycle log | done | 4740b3d |
 | G | Debug overlay + a11y fast path | **wip** | 3c9c1d1 (unpushed — see below) |
 | H | Reasoner/ScreenReader/ActionExecutor interface refactor | not done | - |
-| I | Gemini provider + persistent per-game memory | done | (this commit) |
+| I | Gemini provider + persistent per-game memory | done | 625302b |
+| - | Review-driven fixes (backup exclusions, dead code, privacy doc) | done | 694609a |
+| - | Gradle wrapper files + GitHub Actions APK build workflow | done | (this commit) |
 
 **Next batch: finish G, then H.**
+
+## Gradle wrapper was missing (fixed 2026-07-06)
+
+The repo had `gradle/wrapper/gradle-wrapper.properties` but **not**
+`gradlew`, `gradlew.bat`, or `gradle-wrapper.jar` — an oversight from the
+original Batch A scaffold. This meant `./gradlew` (as documented in the
+README) never actually worked, locally or in CI. Regenerated via
+`gradle wrapper --gradle-version 8.7 --distribution-type bin` (had to run
+with `--offline` in this sandbox since the distribution-URL validation
+network call is blocked by this environment's GitHub-scoped proxy — not
+an issue for real CI runners or local dev machines, which have normal
+internet access). Also added `.github/workflows/build-apk.yml`
+(`workflow_dispatch` + push to `main`/this branch) to build the debug
+APK on GitHub's runners and upload it as a downloadable artifact, since
+this sandbox has no Android SDK and can't build/verify an APK directly.
 
 ## Push access note (2026-07-06)
 

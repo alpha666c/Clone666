@@ -1,0 +1,38 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/android-game-autopilot-7mc6mx
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-autopilot-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

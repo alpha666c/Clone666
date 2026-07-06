@@ -66,6 +66,20 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 You'll need a JDK 17 toolchain.
 
+**No local toolchain? Use the GitHub Actions workflow.** `.github/workflows/build-apk.yml`
+builds the debug APK on GitHub's runners — no Android Studio, no local
+JDK/SDK needed:
+
+1. Go to the repo's **Actions** tab → **Build APK** in the left sidebar.
+2. Click **Run workflow**, pick the branch, run it.
+3. Once it finishes, open the run → **Artifacts** → download
+   `game-autopilot-debug-apk` (a zip containing `app-debug.apk`).
+4. Sideload it: `adb install -r app-debug.apk`, or copy it to the phone
+   and open it with "Install unknown apps" allowed for that source.
+
+It also runs automatically on every push to `main` or
+`claude/android-game-autopilot-7mc6mx`.
+
 ## Permissions
 
 The app needs three things, granted from the in-app **Permissions** screen
