@@ -54,11 +54,20 @@ class AutopilotAccessibilityService : AccessibilityService() {
             }
             val ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
             if (ok && submit) {
-                target.performAction(AccessibilityNodeInfo.ACTION_IME_ENTER)
+                submitImeAction(target)
             }
             ok
         } finally {
             runCatching { root.recycle() }
+        }
+    }
+
+    private fun submitImeAction(target: AccessibilityNodeInfo) {
+        runCatching {
+            val imeEnterAction = AccessibilityNodeInfo::class.java.getDeclaredField("ACTION_IME_ENTER")
+            imeEnterAction.isAccessible = true
+            val action = imeEnterAction.getInt(null)
+            target.performAction(action)
         }
     }
 
