@@ -3,38 +3,33 @@ package com.gameautopilot.app.core
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.graphics.Bitmap
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.util.DisplayMetrics
 import android.view.WindowManager
-import com.gameautopilot.app.accessibility.AutopilotAccessibilityService
-import com.gameautopilot.app.accessibility.NodeTreeReader
 import com.gameautopilot.app.brain.Brain
 import com.gameautopilot.app.brain.BrainFactory
+import com.gameautopilot.app.brain.BraveSearchProvider
 import com.gameautopilot.app.capture.ScreenCaptureManager
-import com.gameautopilot.app.capture.ScreenshotEncoder
 import com.gameautopilot.app.data.Game
 import com.gameautopilot.app.data.GameMemoryStore
 import com.gameautopilot.app.data.Settings
 import com.gameautopilot.app.data.SettingsRepository
 import com.gameautopilot.app.util.Logger
-import com.gameautopilot.app.util.PerceptualHash
-import com.gameautopilot.app.vision.CandidateExtractor
 import com.gameautopilot.app.vision.OcrEngine
-import com.gameautopilot.app.vision.SetOfMarksOverlay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class AutopilotController private constructor(private val appContext: Context) {
 
@@ -43,10 +38,11 @@ class AutopilotController private constructor(private val appContext: Context) {
     private val ocr = OcrEngine()
     private val recent = ActionRing()
     private val rate = RateLimiter(maxPerMinute = settingsRepo.current().maxActionsPerMinute)
-    private val dispatcher = ActionDispatcher(
+    private val dispatcher: ActionExecutor = ActionDispatcher(
         screenWidth = { capture.width },
         screenHeight = { capture.height }
     )
+    private val screenReader: ScreenReader = DefaultScreenReader(capture, ocr)
     private val cycleLog = CycleLog(appContext).apply {
         setEnabled(settingsRepo.current().logCycles)
     }
@@ -61,6 +57,11 @@ class AutopilotController private constructor(private val appContext: Context) {
 
     private val _state = MutableStateFlow<AutopilotState>(AutopilotState.Idle())
     val state: StateFlow<AutopilotState> = _state.asStateFlow()
+
+    private val _debugFrame = MutableSharedFlow<DebugFrame>(replay = 1, extraBufferCapacity = 1)
+    val debugFrame: SharedFlow<DebugFrame> = _debugFrame.asSharedFlow()
+
+    private var fastPath: A11yFastPath? = null
 
     fun settings(): Settings = settingsRepo.current()
     fun settingsRepo(): SettingsRepository = settingsRepo
@@ -106,8 +107,9 @@ class AutopilotController private constructor(private val appContext: Context) {
         cycleLog.setEnabled(s.logCycles)
         brain = BrainFactory.create(s)
         val useMarks = s.useSetOfMarks
+        fastPath = if (s.useFastPath) A11yFastPath() else null
         val loop = DecisionLoop(
-            takeSnapshot = { buildSnapshot(useMarks) },
+            takeSnapshot = { screenReader.read(useMarks) },
             brain = brain!!,
             dispatcher = dispatcher,
             recent = recent,
@@ -117,8 +119,9 @@ class AutopilotController private constructor(private val appContext: Context) {
             gamePackage = game.packageName,
             gameSystemPrompt = game.systemPrompt,
             onlyActOnTargetPackage = s.onlyActOnTarget,
+            autoRecoverInterruptions = s.autoRecoverInterruptions,
             initialMemory = memoryStore.get(game.id),
-            onMemoryUpdate = { text -> scope.launch { memoryStore.set(game.id, text) } },
+            onMemoryUpdate = { mem -> scope.launch { memoryStore.set(game.id, mem) } },
             onState = { phase, note -> updatePhase(phase, note) },
             onCycle = { rec ->
                 cycleLog.write(
@@ -134,7 +137,10 @@ class AutopilotController private constructor(private val appContext: Context) {
                         dispatchOk = rec.dispatchOk
                     )
                 )
-            }
+            },
+            fastPath = fastPath,
+            onDebugFrame = { marks, lastTapped -> _debugFrame.tryEmit(DebugFrame(marks, lastTapped)) },
+            webSearch = if (s.hasWebSearchKey()) BraveSearchProvider(s.webSearchApiKey) else null
         )
         _state.value = AutopilotState.Running(LoopPhase.IDLE, null)
         loopJob = scope.launch {
@@ -165,6 +171,7 @@ class AutopilotController private constructor(private val appContext: Context) {
         capture.tearDown()
         currentGame = null
         brain = null
+        fastPath = null
         _state.value = AutopilotState.Idle()
         recent.clear()
         Logger.i("Autopilot quit")
@@ -176,45 +183,6 @@ class AutopilotController private constructor(private val appContext: Context) {
             _state.value = AutopilotState.Running(phase, note)
         }
     }
-
-    private suspend fun buildSnapshot(useMarks: Boolean): ScreenSnapshot? =
-        withContext(Dispatchers.Default) {
-            val bmp: Bitmap = capture.captureLatest() ?: return@withContext null
-            val w = bmp.width
-            val h = bmp.height
-            val svc = AutopilotAccessibilityService.get()
-            val fg = svc?.foregroundPackage
-            val a11y = svc?.let { NodeTreeReader.read(it) }
-                ?: NodeTreeReader.A11yResult(emptyList(), emptyList())
-            val ocrResult = runCatching { ocr.extract(bmp) }.getOrElse {
-                Logger.w("OCR failed: ${it.message}")
-                OcrEngine.OcrResult(emptyList(), emptyList())
-            }
-            val marks = if (useMarks) {
-                CandidateExtractor.build(a11y.clickables, ocrResult.boxes, maxMarks = 80)
-            } else {
-                emptyList()
-            }
-            val hash = PerceptualHash.dHash(bmp)
-            val toEncode = if (useMarks && marks.isNotEmpty()) {
-                SetOfMarksOverlay.annotate(bmp, marks)
-            } else {
-                bmp
-            }
-            val base64 = ScreenshotEncoder.encode(toEncode)
-            if (toEncode !== bmp) toEncode.recycle()
-            bmp.recycle()
-            ScreenSnapshot(
-                width = w,
-                height = h,
-                foregroundPackage = fg,
-                ocrLines = ocrResult.lines,
-                a11yLines = a11y.lines,
-                marks = marks,
-                screenshotBase64Jpeg = base64,
-                perceptualHash = hash
-            )
-        }
 
     private fun displayMetrics(): Triple<Int, Int, Int> {
         val wm = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -251,3 +219,5 @@ sealed class AutopilotState {
     data class Running(val phase: LoopPhase, val note: String?) : AutopilotState()
     data class Error(val message: String) : AutopilotState()
 }
+
+data class DebugFrame(val marks: List<MarkBox>, val lastTappedMarkId: Int?)

@@ -33,13 +33,66 @@ the overlay → DecisionLoop runs: capture → think → act → wait.
 | D | UI + overlay + wiring (Activities, GameListAdapter, OverlayService) | done | f0a5fb5 |
 | E | README + verification pass | done | 0770aef |
 | F | Set-of-marks + TypeText + stuck-state + cycle log | done | 4740b3d |
-| G | Debug overlay + a11y fast path | **wip** | 3c9c1d1 (unpushed — see below) |
-| H | Reasoner/ScreenReader/ActionExecutor interface refactor | not done | - |
+| G | Debug overlay + a11y fast path | done | (this batch) |
+| H | Reasoner/ScreenReader/ActionExecutor interface refactor | done | (this batch) |
 | I | Gemini provider + persistent per-game memory | done | 625302b |
+| J | Wake lock, ad/interruption recovery, structured memory, web research | done | (this batch) |
 | - | Review-driven fixes (backup exclusions, dead code, privacy doc) | done | 694609a |
 | - | Gradle wrapper files + GitHub Actions APK build workflow | done | (this commit) |
 
-**Next batch: finish G, then H.**
+**Next batch: none queued — see "Batch J" below for what's next after that.**
+
+## Batch J — elite-autopilot gap closure (this session)
+
+Prompted by a from-scratch codebase audit against 5 requirements: Gemini-driven
+play, internet research, ad/interruption recovery, persistent per-game memory,
+keep-screen-on. Findings: memory existed but was a flat text blob; no wake
+lock at all; no research capability at all; ad recovery was implicit
+(foreground-guard just paused the loop, no active dismiss). Plan, in order:
+
+1. **Wake lock** — `OverlayService` acquires a `SCREEN_BRIGHT_WAKE_LOCK`
+   (deprecated but the only wake-lock flag that keeps the *display* on, not
+   just the CPU — `FLAG_KEEP_SCREEN_ON` doesn't help here since the game
+   activity owns the window, not ours) for the duration of a run, released on
+   stop/quit. New `WAKE_LOCK` manifest permission.
+2. **Finish Batch G** — wire `A11yFastPath` into `DecisionLoop` (checked
+   before the brain call, skips the round-trip on repeat Collect/Claim
+   buttons) and `DebugOverlayView` into `OverlayService` behind a
+   `showDebugOverlay` setting.
+3. **Batch H** — extract `ScreenReader` (capture+OCR+a11y+marks),
+   `ActionExecutor` (gesture dispatch), `Reasoner` (brain call) interfaces;
+   existing classes become the default impls, `AutopilotController` wires
+   them. Groundwork for swapping in e.g. a Shizuku executor later without
+   touching `DecisionLoop`.
+4. **Ad/interruption recovery** — foreground-guard tick no longer just
+   idles when off-target; it OCR-keyword-matches common ad-close patterns
+   ("skip", "close", "no thanks", "x", "continue") against on-screen text
+   and taps the best match, else sends `BACK`, bounded to a few attempts
+   before giving up and idling as before.
+5. **Structured per-game memory** — `GameMemoryStore`/`Brain` moved from a
+   flat text blob to a small JSON doc (`goal`, `unlocks[]`, `notes`,
+   `updatedAtMs`), still brain-writable, with transparent migration of any
+   pre-existing plain-text memory file into `notes`.
+6. **Internet research** — new `Action.WebSearch(query)` the brain can
+   emit; `WebSearchProvider` (Brave Search API, needs a Settings API key)
+   runs it, result snippet gets folded into the next tick's `BrainContext`
+   as `researchNotes` (not persisted — ephemeral, one-tick scratch space)
+   so the brain can look up unfamiliar mechanics without a human alt-tabbing
+   out of the loop for it.
+
+None of this changes the core `capture → think → act → wait` loop shape —
+it's additive on top of what F/I already built.
+
+**Build verification note:** this sandbox still has no Android SDK (same
+limitation as the gradle-wrapper session) and the Gradle wrapper's
+distribution download is blocked by this environment's proxy (403 on
+`services.gradle.org`), so none of Batch J was compiled locally — it was
+verified by careful manual read-through of every changed file (import
+correctness, exhaustive-`when` coverage after adding `Action.WebSearch`,
+constructor call sites all using named args) instead. Added this session's
+branch (`claude/eager-feynman-32lqx5`) to `build-apk.yml`'s push triggers
+so the next push runs the real compiler on GitHub's runners — check that
+run before trusting this batch compiles clean.
 
 ## Gradle wrapper was missing (fixed 2026-07-06)
 

@@ -10,9 +10,14 @@ data class Settings(
     val onlyActOnTarget: Boolean = true,
     val provider: BrainProvider = BrainProvider.OPENAI,
     val useSetOfMarks: Boolean = true,
-    val logCycles: Boolean = true
+    val logCycles: Boolean = true,
+    val showDebugOverlay: Boolean = false,
+    val useFastPath: Boolean = true,
+    val webSearchApiKey: String = "",
+    val autoRecoverInterruptions: Boolean = true
 ) {
     fun hasApiKey(): Boolean = apiKey.isNotBlank()
+    fun hasWebSearchKey(): Boolean = webSearchApiKey.isNotBlank()
 
     companion object {
         const val DEFAULT_OPENAI_URL = "https://api.openai.com/v1"

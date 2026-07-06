@@ -21,9 +21,9 @@ EACH TURN YOU RECEIVE:
 - a flattened accessibility tree of clickable/text nodes with pixel bounds,
 - the device screen size (width x height pixels),
 - your last few actions,
-- your own MEMORY notes from previous turns (goal, progress, what you were
-  about to do next) — this is the only thing that survives between turns
-  besides the screen itself.
+- your own MEMORY from previous turns (goal, unlocks, notes) — this is the
+  only thing that survives between turns besides the screen itself,
+- optionally, RESEARCH NOTES if you asked to look something up last turn.
 
 YOU MUST RESPOND WITH STRICT JSON of this exact shape and nothing else:
 {
@@ -34,12 +34,17 @@ YOU MUST RESPOND WITH STRICT JSON of this exact shape and nothing else:
     or {"type":"tap","x":<int>,"y":<int>}              <-- fallback when no mark fits
     or {"type":"swipe","x1":<int>,"y1":<int>,"x2":<int>,"y2":<int>,"durationMs":<int>}
     or {"type":"typeText","text":"...","submit":<bool>}
+    or {"type":"webSearch","query":"..."}               <-- research a game mechanic online
     or {"type":"wait","ms":<int>}
     or {"type":"back"}
     or {"type":"noop"}
   ],
   "confidence": <0.0-1.0>,
-  "memory": "<optional — updated notes to remember next turn>"
+  "memory": {
+    "goal": "<optional — current objective, one sentence>",
+    "unlocks": ["<optional — list of milestones/unlocks reached so far>"],
+    "notes": "<optional — anything else worth remembering, under ~100 words>"
+  }
 }
 
 RULES:
@@ -47,10 +52,14 @@ RULES:
 - Coordinates (when used) are absolute pixels. Stay inside [0, ${ctx.screenWidth}) x [0, ${ctx.screenHeight}).
 - Return 1-3 actions per turn. Prefer one action plus a wait if you are unsure.
 - If nothing meaningful changed since your last actions, return a single wait.
-- Only include "memory" when something worth remembering changed (current
-  goal, progress milestone, what to try next, a mistake to avoid). Keep it
-  under ~120 words of plain notes, not JSON. Omit it (or repeat the same
-  text) when nothing new happened — it replaces the previous memory verbatim.
+- Only include "memory" when something worth remembering changed (a new
+  goal, a new unlock, a mistake to avoid). Omitting "memory" entirely keeps
+  the previous memory as-is. Including it REPLACES the whole record — so
+  restate the goal/unlocks/notes you still want to keep, not just what's new.
+- Use a "webSearch" action (as your only action that turn) when you need to
+  look up an unfamiliar game mechanic or strategy instead of guessing — its
+  result comes back as RESEARCH NOTES on your next turn. Don't overuse it;
+  most turns need no research.
 - Never include text outside the JSON object.
 """.trimIndent()
 
@@ -63,14 +72,15 @@ RULES:
             "${m.id}: \"${m.label.take(40)}\" [${m.left},${m.top},${m.right},${m.bottom}] src=${m.source.name.lowercase()}"
         }
         val stuck = ctx.stuckHint?.let { "\nSTUCK HINT: $it\n" }.orEmpty()
-        val memory = ctx.gameMemory.ifBlank { "(none yet — this is a fresh start)" }
+        val memory = ctx.gameMemory.toPromptText()
+        val research = ctx.researchNotes?.let { "\nRESEARCH NOTES (from your last webSearch):\n$it\n" }.orEmpty()
         return """
 Screen size: ${ctx.screenWidth}x${ctx.screenHeight}
 Recent actions: $recent
 $stuck
 MEMORY (your notes from previous turns):
 $memory
-
+$research
 MARKS:
 $marks
 

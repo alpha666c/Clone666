@@ -135,18 +135,44 @@ casual single-player games.
 
 ## Per-game memory
 
-Each game keeps a small persistent free-text "memory" (current goal,
-progress milestones, what to try next) written by the brain itself. The
-brain's JSON response has an optional `memory` field; whenever it's
-present, `DecisionLoop` replaces the stored memory and `AutopilotController`
-persists it to `filesDir/memory/{gameId}.txt` (capped at 4000 characters).
-The next tick — and the next time you launch the game, even after an app
-restart — includes that memory in the prompt, so the brain doesn't have to
-rediscover "I'm on level 12 with 3 lives" from scratch every session.
+Each game keeps a small persistent, **structured** memory — `goal`
+(current objective), `unlocks` (milestones reached), and `notes`
+(anything else) — written by the brain itself. The brain's JSON response
+has an optional `memory` object; whenever it's present, `DecisionLoop`
+replaces the stored `GameMemory` wholesale (the brain restates any
+goal/unlocks/notes it wants kept) and `AutopilotController` persists it as
+JSON to `filesDir/memory/{gameId}.txt` (goal capped at 200 chars, notes at
+3000, up to 40 unlocks). The next tick — and the next time you launch the
+game, even after an app restart — includes that memory in the prompt, so
+the brain doesn't have to rediscover "I'm on level 12 with 3 lives" from
+scratch every session. Memory files written before this structured format
+existed are read fine — their plain text is migrated into `notes` the
+first time they're loaded.
 
 Edit a game → **Reset memory** clears its stored notes (separate from
 **Delete**, which removes the whole game). Deleting a game also clears its
 memory file.
+
+## Internet research
+
+If you paste a **Brave Search API key** into Settings → *Internet research*,
+the brain can emit a `webSearch` action (as its only action that turn)
+to look up an unfamiliar game mechanic or strategy instead of guessing.
+`DecisionLoop` intercepts this action before it ever reaches the
+accessibility dispatcher, calls Brave's REST API, and hands the top few
+result snippets back as ephemeral `RESEARCH NOTES` in the *next* tick's
+prompt — this is separate from `GameMemory` and isn't persisted. Without a
+key configured, a `webSearch` action just gets told "unavailable" so the
+brain falls back to what it can see on screen.
+
+## Keeping the screen on
+
+`OverlayService` acquires a `PowerManager` wake lock (the deprecated but
+still-functional `SCREEN_BRIGHT_WAKE_LOCK` flag — a `PARTIAL_WAKE_LOCK`
+would keep the CPU running but let the *display* sleep, which would
+blank the frames `MediaProjection` captures) for the duration of a run,
+released on Stop/Quit. Needs the `WAKE_LOCK` manifest permission, which
+doesn't require a runtime grant.
 
 ## Adding a game
 
@@ -182,6 +208,13 @@ Drag the chip anywhere on screen with a touch-and-drag.
 - **Target package guard**: with *Only act when target game is foreground*
   on (default), the loop skips ticks when your game isn't the foreground
   app. Prevents the bot from acting on your launcher or settings.
+- **Auto-recover from ads / interruptions** (Settings toggle, on by
+  default): instead of just idling while another app/activity (an
+  interstitial ad, a system dialog) is in front, `DecisionLoop` looks for
+  a mark whose label reads like a dismiss/skip control ("skip", "close",
+  "no thanks", "×", …) and taps it, falling back to `BACK` when nothing
+  matches — bounded to 5 consecutive attempts per interruption so a
+  genuinely stuck one doesn't turn into an infinite tap/back loop.
 - **Action rate limit**: configurable max actions per rolling minute
   (default 30).
 - **Out-of-bounds dropping**: any tap/swipe with coords outside the

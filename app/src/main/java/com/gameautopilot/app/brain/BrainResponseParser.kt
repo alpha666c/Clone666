@@ -1,6 +1,7 @@
 package com.gameautopilot.app.brain
 
 import com.gameautopilot.app.core.Action
+import com.gameautopilot.app.data.GameMemory
 import com.gameautopilot.app.util.Logger
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,8 +29,29 @@ object BrainResponseParser {
                 .onFailure { Logger.w("Skipping bad action: ${it.message}") }
                 .getOrNull()
         }
-        val memoryUpdate = obj.optString("memory", "").ifBlank { null }
+        val memoryUpdate = parseMemory(obj.opt("memory"))
         return BrainDecision(thought = thought, actions = actions, confidence = confidence, memoryUpdate = memoryUpdate)
+    }
+
+    /**
+     * Accepts the documented shape (`{"goal":..,"unlocks":[..],"notes":..}`)
+     * and, for leniency, a bare string — some vision models ignore the
+     * "must be an object" instruction and just echo free text; treat that as
+     * `notes` rather than dropping the update entirely.
+     */
+    private fun parseMemory(raw: Any?): GameMemory? = when (raw) {
+        is JSONObject -> {
+            val unlocksArr = raw.optJSONArray("unlocks")
+            val mem = GameMemory(
+                goal = raw.optString("goal", ""),
+                unlocks = unlocksArr?.let { arr -> (0 until arr.length()).map { arr.getString(it) } } ?: emptyList(),
+                notes = raw.optString("notes", ""),
+                updatedAtMs = System.currentTimeMillis()
+            )
+            mem.takeUnless { it.isBlank() }
+        }
+        is String -> raw.ifBlank { null }?.let { GameMemory(notes = it, updatedAtMs = System.currentTimeMillis()) }
+        else -> null
     }
 
     private fun stripCodeFences(s: String): String {

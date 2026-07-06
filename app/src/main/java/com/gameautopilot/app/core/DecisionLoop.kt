@@ -3,6 +3,8 @@ package com.gameautopilot.app.core
 import com.gameautopilot.app.brain.Brain
 import com.gameautopilot.app.brain.BrainContext
 import com.gameautopilot.app.brain.BrainException
+import com.gameautopilot.app.brain.WebSearchProvider
+import com.gameautopilot.app.data.GameMemory
 import com.gameautopilot.app.util.Logger
 import com.gameautopilot.app.util.PerceptualHash
 import kotlinx.coroutines.delay
@@ -19,7 +21,7 @@ import kotlinx.coroutines.delay
 class DecisionLoop(
     private val takeSnapshot: suspend () -> ScreenSnapshot?,
     private val brain: Brain,
-    private val dispatcher: ActionDispatcher,
+    private val dispatcher: ActionExecutor,
     private val recent: ActionRing,
     private val rate: RateLimiter,
     private val baseTickIntervalMs: Long,
@@ -27,15 +29,21 @@ class DecisionLoop(
     private val gamePackage: String,
     private val gameSystemPrompt: String,
     private val onlyActOnTargetPackage: Boolean,
-    initialMemory: String = "",
-    private val onMemoryUpdate: (String) -> Unit = {},
+    private val autoRecoverInterruptions: Boolean = true,
+    initialMemory: GameMemory = GameMemory(),
+    private val onMemoryUpdate: (GameMemory) -> Unit = {},
     private val onState: suspend (LoopPhase, String?) -> Unit,
-    private val onCycle: (CycleRecord) -> Unit = {}
+    private val onCycle: (CycleRecord) -> Unit = {},
+    private val fastPath: A11yFastPath? = null,
+    private val onDebugFrame: (List<MarkBox>, Int?) -> Unit = { _, _ -> },
+    private val webSearch: WebSearchProvider? = null
 ) {
 
     private val recentHashes = ArrayDeque<Long>(STUCK_WINDOW)
     private var stuckCount = 0
-    @Volatile private var memory: String = initialMemory
+    private var interruptionAttempts = 0
+    @Volatile private var memory: GameMemory = initialMemory
+    @Volatile private var pendingResearchNotes: String? = null
 
     /** @return delay (ms) before the next tick should run. */
     suspend fun tick(): Long {
@@ -49,10 +57,29 @@ class DecisionLoop(
             snapshot.foregroundPackage != null &&
             snapshot.foregroundPackage != gamePackage
         ) {
+            if (autoRecoverInterruptions && interruptionAttempts < MAX_INTERRUPTION_ATTEMPTS) {
+                interruptionAttempts++
+                val recovery = InterruptionRecovery.findRecoveryAction(snapshot.marks)
+                Logger.i(
+                    "Off-target foreground=${snapshot.foregroundPackage} — " +
+                        "recovery attempt $interruptionAttempts/${MAX_INTERRUPTION_ATTEMPTS}: ${recovery.shortLabel()}"
+                )
+                onState(LoopPhase.ACTING, "Dismissing interruption…")
+                val (labels, oks, extraWaitMs) = dispatchActions(listOf(recovery), snapshot)
+                onCycle(
+                    CycleRecord(
+                        snapshot,
+                        "(auto-recovery: off-target foreground=${snapshot.foregroundPackage})",
+                        labels, oks, -1
+                    )
+                )
+                return (baseTickIntervalMs + extraWaitMs).coerceAtLeast(800L)
+            }
             Logger.d("Foreground=${snapshot.foregroundPackage}, expected=$gamePackage — skipping tick")
             onState(LoopPhase.IDLE, "Waiting for ${gamePackage.substringAfterLast('.')}")
             return baseTickIntervalMs
         }
+        interruptionAttempts = 0
 
         val delta = recentHashes.lastOrNull()?.let { PerceptualHash.hamming(it, snapshot.perceptualHash) } ?: -1
         recordHash(snapshot.perceptualHash)
@@ -71,7 +98,20 @@ class DecisionLoop(
             return baseTickIntervalMs.coerceAtLeast(4_000L)
         }
 
+        if (stuckHint == null) {
+            val fastActions = fastPath?.tryFastPath(snapshot, delta)
+            if (fastActions != null) {
+                onState(LoopPhase.ACTING, "fast-path")
+                val (labels, oks, extraWaitMs) = dispatchActions(fastActions, snapshot)
+                onDebugFrame(snapshot.marks, (fastActions.firstOrNull() as? Action.TapMark)?.markId)
+                onCycle(CycleRecord(snapshot, "(fast-path repeat)", labels, oks, delta))
+                return baseTickIntervalMs + extraWaitMs
+            }
+        }
+
         onState(LoopPhase.THINKING, null)
+        val researchNotes = pendingResearchNotes
+        pendingResearchNotes = null
         val ctx = BrainContext(
             gameName = gameName,
             gamePackage = gamePackage,
@@ -84,7 +124,8 @@ class DecisionLoop(
             marks = snapshot.marks,
             recentActionLabels = recent.snapshot(),
             stuckHint = stuckHint,
-            gameMemory = memory
+            gameMemory = memory,
+            researchNotes = researchNotes
         )
 
         val decision = try {
@@ -113,12 +154,42 @@ class DecisionLoop(
             return baseTickIntervalMs
         }
 
+        val searchAction = decision.actions.firstOrNull { it is Action.WebSearch } as? Action.WebSearch
+        if (searchAction != null) {
+            onState(LoopPhase.THINKING, "Researching: ${searchAction.query.take(60)}")
+            pendingResearchNotes = if (webSearch != null) {
+                runCatching { webSearch.search(searchAction.query) }
+                    .getOrElse { "Search failed: ${it.message}" }
+            } else {
+                "(web search unavailable — no provider configured)"
+            }
+            onCycle(
+                CycleRecord(
+                    snapshot, decision.thought,
+                    listOf(searchAction.shortLabel()), listOf(webSearch != null), delta
+                )
+            )
+            return baseTickIntervalMs
+        }
+
         onState(LoopPhase.ACTING, decision.thought.take(80))
 
+        val (labels, oks, extraWaitMs) = dispatchActions(decision.actions, snapshot)
+        fastPath?.recordBrainDispatch(decision.actions, snapshot.marks)
+        onDebugFrame(snapshot.marks, (decision.actions.firstOrNull { it is Action.TapMark } as? Action.TapMark)?.markId)
+        onCycle(CycleRecord(snapshot, decision.thought, labels, oks, delta))
+
+        return baseTickIntervalMs + extraWaitMs
+    }
+
+    private suspend fun dispatchActions(
+        actions: List<Action>,
+        snapshot: ScreenSnapshot
+    ): Triple<List<String>, List<Boolean>, Long> {
         var extraWaitMs = 0L
         val labels = mutableListOf<String>()
         val oks = mutableListOf<Boolean>()
-        for (action in decision.actions) {
+        for (action in actions) {
             if (action is Action.Wait) {
                 extraWaitMs += action.ms
                 labels.add(action.shortLabel())
@@ -140,9 +211,7 @@ class DecisionLoop(
             recent.add(action.shortLabel() + if (!ok) "(fail)" else "")
             delay(120L)
         }
-        onCycle(CycleRecord(snapshot, decision.thought, labels, oks, delta))
-
-        return baseTickIntervalMs + extraWaitMs
+        return Triple(labels, oks, extraWaitMs)
     }
 
     private fun recordHash(h: Long) {
@@ -160,6 +229,7 @@ class DecisionLoop(
         const val STUCK_WINDOW = 3
         const val STUCK_DELTA = 5
         const val STUCK_TRIP = 6
+        const val MAX_INTERRUPTION_ATTEMPTS = 5
     }
 }
 

@@ -25,7 +25,11 @@ class SettingsRepository(context: Context) {
             BrainProvider.valueOf(prefs.getString(KEY_PROVIDER, BrainProvider.OPENAI.name)!!)
         }.getOrDefault(BrainProvider.OPENAI),
         useSetOfMarks = prefs.getBoolean(KEY_USE_SOM, true),
-        logCycles = prefs.getBoolean(KEY_LOG_CYCLES, true)
+        logCycles = prefs.getBoolean(KEY_LOG_CYCLES, true),
+        showDebugOverlay = prefs.getBoolean(KEY_DEBUG_OVERLAY, false),
+        useFastPath = prefs.getBoolean(KEY_FAST_PATH, true),
+        webSearchApiKey = prefs.getString(KEY_SEARCH_KEY, "") ?: "",
+        autoRecoverInterruptions = prefs.getBoolean(KEY_AUTO_RECOVER, true)
     )
 
     fun current(): Settings = _settings.value
@@ -40,12 +44,21 @@ class SettingsRepository(context: Context) {
             .putString(KEY_PROVIDER, s.provider.name)
             .putBoolean(KEY_USE_SOM, s.useSetOfMarks)
             .putBoolean(KEY_LOG_CYCLES, s.logCycles)
+            .putBoolean(KEY_DEBUG_OVERLAY, s.showDebugOverlay)
+            .putBoolean(KEY_FAST_PATH, s.useFastPath)
+            .putString(KEY_SEARCH_KEY, s.webSearchApiKey)
+            .putBoolean(KEY_AUTO_RECOVER, s.autoRecoverInterruptions)
             .apply()
         _settings.value = read()
     }
 
     fun clearApiKey() {
         prefs.edit().putString(KEY_API_KEY, "").apply()
+        _settings.value = read()
+    }
+
+    fun clearWebSearchKey() {
+        prefs.edit().putString(KEY_SEARCH_KEY, "").apply()
         _settings.value = read()
     }
 
@@ -59,5 +72,9 @@ class SettingsRepository(context: Context) {
         private const val KEY_PROVIDER = "provider"
         private const val KEY_USE_SOM = "useSetOfMarks"
         private const val KEY_LOG_CYCLES = "logCycles"
+        private const val KEY_DEBUG_OVERLAY = "showDebugOverlay"
+        private const val KEY_FAST_PATH = "useFastPath"
+        private const val KEY_SEARCH_KEY = "webSearchApiKey"
+        private const val KEY_AUTO_RECOVER = "autoRecoverInterruptions"
     }
 }

@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - claude/android-game-autopilot-7mc6mx
+      - claude/eager-feynman-32lqx5
       - main
 
 jobs:

@@ -34,6 +34,14 @@
     <string name="settings_clear_api_key">Clear API key</string>
     <string name="settings_api_key_set">API key is set</string>
     <string name="settings_api_key_not_set">No API key configured</string>
+    <string name="settings_use_fast_path">Skip brain call on repeat taps (fast path)</string>
+    <string name="settings_show_debug_overlay">Show debug overlay (set-of-marks boxes)</string>
+    <string name="settings_auto_recover">Auto-recover from ads / interruptions</string>
+    <string name="settings_web_search_section">Internet research (optional)</string>
+    <string name="settings_web_search_api_key">Brave Search API key</string>
+    <string name="settings_clear_web_search_key">Clear search key</string>
+    <string name="settings_search_key_set">Search key is set — brain can research game mechanics</string>
+    <string name="settings_search_key_not_set">No search key — brain cannot look things up online</string>
 
     <string name="reset_memory">Reset memory</string>
     <string name="reset_memory_confirm">Forget everything the AI has learned about this game\'s progress? This cannot be undone.</string>

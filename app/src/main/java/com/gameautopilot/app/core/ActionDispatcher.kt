@@ -5,12 +5,13 @@ import com.gameautopilot.app.accessibility.GestureDispatcher
 import com.gameautopilot.app.util.Logger
 import kotlinx.coroutines.delay
 
+/** Default [ActionExecutor]: dispatches via the accessibility service's synthetic gestures. */
 class ActionDispatcher(
     private val screenWidth: () -> Int,
     private val screenHeight: () -> Int
-) {
+) : ActionExecutor {
 
-    suspend fun dispatch(action: Action, marks: List<MarkBox>): Boolean {
+    override suspend fun dispatch(action: Action, marks: List<MarkBox>): Boolean {
         val svc = AutopilotAccessibilityService.get()
         if (svc == null) {
             Logger.w("Cannot dispatch — accessibility service not connected")
@@ -51,6 +52,12 @@ class ActionDispatcher(
             Action.Back -> GestureDispatcher.back(svc)
             is Action.Wait -> {
                 delay(action.ms.coerceIn(0L, 60_000L))
+                true
+            }
+            is Action.WebSearch -> {
+                // Intercepted upstream in DecisionLoop before dispatch is ever reached;
+                // this branch only exists so `when` stays exhaustive.
+                Logger.w("WebSearch action reached ActionDispatcher — should have been intercepted")
                 true
             }
             Action.NoOp -> true

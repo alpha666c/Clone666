@@ -9,6 +9,7 @@ import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -24,6 +25,7 @@ import com.gameautopilot.app.R
 import com.gameautopilot.app.core.AutopilotController
 import com.gameautopilot.app.core.AutopilotState
 import com.gameautopilot.app.core.LoopPhase
+import com.gameautopilot.app.data.SettingsRepository
 import com.gameautopilot.app.ui.ProjectionRequestActivity
 import com.gameautopilot.app.util.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +44,9 @@ class OverlayService : Service() {
     private var overlayView: View? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var stateJob: Job? = null
+    private var debugFrameJob: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var debugOverlayView: DebugOverlayView? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -49,6 +54,28 @@ class OverlayService : Service() {
         super.onCreate()
         controller = AutopilotController.get(this)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
+    }
+
+    /**
+     * The game we're driving owns the foreground window, not us — a window-level
+     * FLAG_KEEP_SCREEN_ON on our overlay wouldn't stop the display from sleeping.
+     * SCREEN_BRIGHT_WAKE_LOCK is deprecated but is the only wake-lock flag that
+     * actually keeps the display lit; a PARTIAL_WAKE_LOCK alone would keep the CPU
+     * running while the screen (and therefore MediaProjection's captured frames) go dark.
+     */
+    @Suppress("DEPRECATION")
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
+            "GameAutopilot:autopilotScreen"
+        ).apply { setReferenceCounted(false); acquire(MAX_WAKE_LOCK_MS) }
+    }
+
+    private fun releaseWakeLock() {
+        runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
+        wakeLock = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -91,7 +118,9 @@ class OverlayService : Service() {
             handleQuit()
             return
         }
+        acquireWakeLock()
         showOverlay()
+        showDebugOverlayIfEnabled()
         observeState()
         launchTargetGame()
     }
@@ -99,9 +128,49 @@ class OverlayService : Service() {
     private fun handleQuit() {
         controller.quit()
         removeOverlay()
+        removeDebugOverlay()
+        releaseWakeLock()
         stateJob?.cancel()
+        debugFrameJob?.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun showDebugOverlayIfEnabled() {
+        if (!SettingsRepository(this).current().showDebugOverlay) return
+        if (debugOverlayView != null) return
+        val view = DebugOverlayView(this)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        runCatching { wm.addView(view, params) }.onFailure {
+            Logger.w("Failed to add debug overlay", it)
+            return
+        }
+        debugOverlayView = view
+        debugFrameJob?.cancel()
+        debugFrameJob = scope.launch {
+            controller.debugFrame.collectLatest { frame ->
+                debugOverlayView?.update(frame.marks, frame.lastTappedMarkId)
+            }
+        }
+    }
+
+    private fun removeDebugOverlay() {
+        debugFrameJob?.cancel()
+        debugFrameJob = null
+        val v = debugOverlayView ?: return
+        runCatching { wm.removeView(v) }
+        debugOverlayView = null
     }
 
     private fun launchTargetGame() {
@@ -272,10 +341,13 @@ class OverlayService : Service() {
     override fun onDestroy() {
         scope.cancel()
         removeOverlay()
+        removeDebugOverlay()
+        releaseWakeLock()
         super.onDestroy()
     }
 
     companion object {
+        private const val MAX_WAKE_LOCK_MS = 6 * 60 * 60 * 1000L // 6h safety cap; renewed on each attach
         const val ACTION_PREPARE = "com.gameautopilot.app.action.PREPARE"
         const val ACTION_ATTACH_PROJECTION = "com.gameautopilot.app.action.ATTACH"
         const val ACTION_QUIT = "com.gameautopilot.app.action.QUIT"

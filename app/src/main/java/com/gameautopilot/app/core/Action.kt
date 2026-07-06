@@ -13,6 +13,7 @@ sealed class Action {
         val durationMs: Long = 300
     ) : Action()
     data class TypeText(val text: String, val submit: Boolean = false) : Action()
+    data class WebSearch(val query: String) : Action()
     data class Wait(val ms: Long) : Action()
     data object Back : Action()
     data object NoOp : Action()
@@ -24,6 +25,7 @@ sealed class Action {
         is LongPressMark -> "longMark($markId,${durationMs}ms)"
         is Swipe -> "swipe($x1,$y1→$x2,$y2)"
         is TypeText -> "type(${text.take(20)}${if (submit) "+enter" else ""})"
+        is WebSearch -> "webSearch(${query.take(30)})"
         is Wait -> "wait(${ms}ms)"
         Back -> "back"
         NoOp -> "noop"
@@ -60,6 +62,10 @@ sealed class Action {
                 "typetext", "type_text", "type" -> {
                     val text = o.optString("text", "")
                     if (text.isNotEmpty()) TypeText(text, o.optBoolean("submit", false)) else null
+                }
+                "websearch", "web_search", "search" -> {
+                    val query = o.optString("query", "")
+                    if (query.isNotBlank()) WebSearch(query) else null
                 }
                 "wait" -> Wait(ms = o.optLong("ms", 500L).coerceIn(0L, 60_000L))
                 "back" -> Back
