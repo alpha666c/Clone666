@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.graphics.Rect
 import com.gameautopilot.app.core.MarkBox
 import kotlin.math.max
-import kotlin.math.min
 
 /**
  * Draws translucent numbered rectangles on top of a bitmap copy.
@@ -51,6 +50,3 @@ object SetOfMarksOverlay {
         return out
     }
 }
-
-@Suppress("unused")
-private fun clampi(v: Int, lo: Int, hi: Int) = min(max(v, lo), hi)

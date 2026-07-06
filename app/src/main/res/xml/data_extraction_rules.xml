@@ -2,8 +2,12 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="autopilot_settings.xml" />
+        <exclude domain="file" path="memory/" />
+        <exclude domain="file" path="cycles/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="autopilot_settings.xml" />
+        <exclude domain="file" path="memory/" />
+        <exclude domain="file" path="cycles/" />
     </device-transfer>
 </data-extraction-rules>

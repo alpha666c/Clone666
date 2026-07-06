@@ -110,6 +110,15 @@ This is per-user app-private storage, but it is *not* encrypted at rest.
 The file is excluded from cloud backup and device transfer. Use the
 **Clear API key** button in Settings to wipe it.
 
+**What leaves your device:** every tick, the screenshot, OCR'd on-screen
+text, a flattened accessibility tree, and the per-game memory notes are
+sent to whichever provider you've configured (OpenAI / NVIDIA / Google).
+If the game you're automating shows an account name, balance, or other
+personal info on screen, that content leaves your device on every tick
+while the autopilot is running — this is inherent to a vision-LLM-driven
+loop, not a bug, but worth knowing before pointing it at anything beyond
+casual single-player games.
+
 ## Per-game memory
 
 Each game keeps a small persistent free-text "memory" (current goal,

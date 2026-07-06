@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <exclude domain="sharedpref" path="autopilot_settings.xml" />
+    <!-- Per-game memory notes and cycle logs are derived from on-screen
+         content (OCR'd text, thoughts about what was on screen) and may
+         include account/balance info from the game being played. -->
+    <exclude domain="file" path="memory/" />
+    <exclude domain="file" path="cycles/" />
 </full-backup-content>
