@@ -85,14 +85,48 @@ it's additive on top of what F/I already built.
 
 **Build verification note:** this sandbox still has no Android SDK (same
 limitation as the gradle-wrapper session) and the Gradle wrapper's
-distribution download is blocked by this environment's proxy (403 on
-`services.gradle.org`), so none of Batch J was compiled locally — it was
-verified by careful manual read-through of every changed file (import
-correctness, exhaustive-`when` coverage after adding `Action.WebSearch`,
-constructor call sites all using named args) instead. Added this session's
-branch (`claude/eager-feynman-32lqx5`) to `build-apk.yml`'s push triggers
-so the next push runs the real compiler on GitHub's runners — check that
-run before trusting this batch compiles clean.
+distribution download is blocked by this environment's proxy — but only
+because `services.gradle.org/distributions/...` 307-redirects to
+`github.com/gradle/gradle-distributions/releases/download/...`, and raw
+GitHub release-asset downloads are the specific thing this session's
+egress policy blocks (API/git-over-https to github.com work fine, that's
+a different host path). So none of Batch J was compiled locally at
+first — verified only by manual read-through — and CI turned out to be a
+dead end too: it built successfully once (`ca4c28c`, ~2.5 min) but every
+run after that fails in 3-4 seconds with zero logs, which is the
+signature of GitHub Actions minutes/spending-limit exhaustion on the
+account, not a code problem. Nothing here can fix that; the repo owner
+needs to check Settings → Billing on the `alpha666c` account.
+
+**Actually verified Batch J locally instead**, bypassing both dead ends:
+`dl.google.com` (Android SDK) and Maven Central *are* reachable through
+the proxy, and this sandbox already has a system Gradle (8.14.3) install
+separate from the project's wrapper. Recipe, repeatable in any session
+with this same proxy policy:
+
+```
+mkdir -p /opt/android-sdk/cmdline-tools
+cd /tmp && curl -sSL -o cmdline-tools.zip \
+  "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+unzip -q cmdline-tools.zip -d /opt/android-sdk/cmdline-tools
+mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+export ANDROID_HOME=/opt/android-sdk
+yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses
+"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
+  "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+echo "sdk.dir=$ANDROID_HOME" > local.properties   # gitignored, don't commit
+ANDROID_HOME=$ANDROID_HOME gradle :app:assembleDebug --console=plain
+```
+
+This found a real bug the manual review missed: `DecisionLoop.kt`'s
+`webSearch != null` smart-cast doesn't survive into the `runCatching {
+webSearch.search(...) }` lambda (Kotlin doesn't smart-cast a nullable
+member `val` across a lambda boundary even when it's provably immutable
+in that scope) — fixed by capturing it to a local `val` first. Fixed in
+`86fc5a7`; `:app:assembleDebug` now succeeds and produces a real
+`app-debug.apk`. Lesson: manual read-through catches wiring/type
+mismatches but not this class of Kotlin flow-analysis gap — always
+prefer an actual compile when one is reachable at all.
 
 ## Gradle wrapper was missing (fixed 2026-07-06)
 
