@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.gameautopilot.app.R
 import com.gameautopilot.app.core.AutopilotController
 import com.gameautopilot.app.data.BrainProvider
+import com.gameautopilot.app.data.OcrScript
 import com.gameautopilot.app.data.Settings
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -38,6 +39,12 @@ class SettingsActivity : AppCompatActivity() {
         val providerOpenAiRadio = findViewById<RadioButton>(R.id.providerOpenAiRadio)
         val providerNvidiaRadio = findViewById<RadioButton>(R.id.providerNvidiaRadio)
         val providerGeminiRadio = findViewById<RadioButton>(R.id.providerGeminiRadio)
+        val ocrScriptGroup = findViewById<RadioGroup>(R.id.ocrScriptGroup)
+        val ocrLatinRadio = findViewById<RadioButton>(R.id.ocrLatinRadio)
+        val ocrChineseRadio = findViewById<RadioButton>(R.id.ocrChineseRadio)
+        val ocrJapaneseRadio = findViewById<RadioButton>(R.id.ocrJapaneseRadio)
+        val ocrKoreanRadio = findViewById<RadioButton>(R.id.ocrKoreanRadio)
+        val ocrDevanagariRadio = findViewById<RadioButton>(R.id.ocrDevanagariRadio)
         val saveBtn = findViewById<MaterialButton>(R.id.saveBtn)
 
         val repo = AutopilotController.get(this).settingsRepo()
@@ -61,6 +68,13 @@ class SettingsActivity : AppCompatActivity() {
             BrainProvider.OPENAI -> providerOpenAiRadio.isChecked = true
             BrainProvider.NVIDIA -> providerNvidiaRadio.isChecked = true
             BrainProvider.GEMINI -> providerGeminiRadio.isChecked = true
+        }
+        when (current.ocrScript) {
+            OcrScript.LATIN -> ocrLatinRadio.isChecked = true
+            OcrScript.CHINESE -> ocrChineseRadio.isChecked = true
+            OcrScript.JAPANESE -> ocrJapaneseRadio.isChecked = true
+            OcrScript.KOREAN -> ocrKoreanRadio.isChecked = true
+            OcrScript.DEVANAGARI -> ocrDevanagariRadio.isChecked = true
         }
         apiKeyInput.setText("") // never echo back stored key
         apiKeyStatus.text = getString(
@@ -109,6 +123,13 @@ class SettingsActivity : AppCompatActivity() {
                 R.id.providerGeminiRadio -> BrainProvider.GEMINI
                 else -> BrainProvider.OPENAI
             }
+            val ocrScript = when (ocrScriptGroup.checkedRadioButtonId) {
+                R.id.ocrChineseRadio -> OcrScript.CHINESE
+                R.id.ocrJapaneseRadio -> OcrScript.JAPANESE
+                R.id.ocrKoreanRadio -> OcrScript.KOREAN
+                R.id.ocrDevanagariRadio -> OcrScript.DEVANAGARI
+                else -> OcrScript.LATIN
+            }
             val merged = current.copy(
                 baseUrl = baseUrlInput.text?.toString()?.trim().orEmpty()
                     .ifBlank { Settings.defaultUrlFor(provider) },
@@ -123,7 +144,8 @@ class SettingsActivity : AppCompatActivity() {
                 useFastPath = fastPathSwitch.isChecked,
                 showDebugOverlay = debugOverlaySwitch.isChecked,
                 autoRecoverInterruptions = autoRecoverSwitch.isChecked,
-                webSearchApiKey = if (typedSearchKey.isNotBlank()) typedSearchKey else repo.current().webSearchApiKey
+                webSearchApiKey = if (typedSearchKey.isNotBlank()) typedSearchKey else repo.current().webSearchApiKey,
+                ocrScript = ocrScript
             )
             repo.save(merged)
             apiKeyInput.setText("")

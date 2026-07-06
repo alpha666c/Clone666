@@ -42,6 +42,12 @@
     <string name="settings_clear_web_search_key">Clear search key</string>
     <string name="settings_search_key_set">Search key is set — brain can research game mechanics</string>
     <string name="settings_search_key_not_set">No search key — brain cannot look things up online</string>
+    <string name="settings_ocr_script">OCR script (match the game\'s on-screen language)</string>
+    <string name="settings_ocr_latin">Latin (English + most Western languages)</string>
+    <string name="settings_ocr_chinese">Chinese</string>
+    <string name="settings_ocr_japanese">Japanese</string>
+    <string name="settings_ocr_korean">Korean</string>
+    <string name="settings_ocr_devanagari">Devanagari (Hindi, Marathi, …)</string>
 
     <string name="reset_memory">Reset memory</string>
     <string name="reset_memory_confirm">Forget everything the AI has learned about this game\'s progress? This cannot be undone.</string>

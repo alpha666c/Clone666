@@ -80,6 +80,20 @@ JDK/SDK needed:
 It also runs automatically on every push to `main` or
 `claude/android-game-autopilot-7mc6mx`.
 
+## Tests
+
+`app/src/test/` has JVM unit tests for the pure-logic pieces (JSON action
+parsing, the strict-JSON brain response parser, the rate limiter, the
+perceptual-hash distance, structured memory rendering, the fast-path
+repeat-tap heuristic, ad/interruption recovery keyword matching):
+
+```bash
+./gradlew :app:testDebugUnitTest
+```
+
+Nothing that needs an Android device or emulator is covered here — the
+capture/accessibility/overlay pieces are only exercisable on-device.
+
 ## Permissions
 
 The app needs three things, granted from the in-app **Permissions** screen
@@ -118,10 +132,12 @@ OpenAI-compatible endpoints). Anthropic is the remaining major provider
 that's neither OpenAI-shaped nor Gemini-shaped and would need its own
 `Brain` implementation.
 
-**API key storage:** plain `SharedPreferences` at
-`/data/data/com.gameautopilot.app/shared_prefs/autopilot_settings.xml`.
-This is per-user app-private storage, but it is *not* encrypted at rest.
-The file is excluded from cloud backup and device transfer. Use the
+**API key storage:** `EncryptedSharedPreferences`
+(`autopilot_settings_secure.xml`, AES-256-SIV keys / AES-256-GCM values,
+backed by the Android Keystore) — not plaintext. Settings written before
+this existed are migrated in automatically the first time the app opens
+after updating, then wiped from the old plaintext file. The file is
+excluded from cloud backup and device transfer regardless. Use the
 **Clear API key** button in Settings to wipe it.
 
 **What leaves your device:** every tick, the screenshot, OCR'd on-screen
@@ -201,7 +217,11 @@ From the game card, tap **Launch & Autopilot**:
 5. Tap **▶ Start** to begin the decision loop. **■ Stop** pauses
    without releasing the projection. **✕ Quit** tears everything down.
 
-Drag the chip anywhere on screen with a touch-and-drag.
+Drag the chip anywhere on screen with a touch-and-drag. Rotating the
+device mid-session is handled — `OverlayService.onConfigurationChanged()`
+recreates the capture `VirtualDisplay` at the new dimensions without
+dropping the `MediaProjection` consent, so you don't get kicked back to
+the permission dialog.
 
 ## Safety
 
@@ -226,11 +246,16 @@ Drag the chip anywhere on screen with a touch-and-drag.
 
 ## Limitations
 
-- One game per autopilot session (the controller is a singleton).
-- Rotation while running is not handled (the VirtualDisplay isn't
-  recreated). Lock orientation or Quit/restart on rotate.
-- ML Kit Latin text-only OCR — non-Latin scripts will OCR as garbage,
-  but the brain still sees the screenshot directly.
+- One game per autopilot session (the controller is a singleton). This
+  is intentional, not a gap to fix — Android only has one foreground app
+  at a time, so "run two autopilots simultaneously" isn't a coherent
+  request on a single device in the first place.
+- OCR is single-script per session (Settings → OCR script: Latin /
+  Chinese / Japanese / Korean / Devanagari — ML Kit ships a separate
+  model per script family, so autodetecting across all of them isn't
+  practical). Pick the one matching your game's on-screen language; the
+  brain still sees the raw screenshot regardless, so icon-only games are
+  unaffected either way.
 - `TemplateMatcher` from the early design is **not** included — the
   vision model handles icon recognition directly from the screenshot.
 - API spend is real. With `gpt-4o-mini` at 1.5s tick and ~5KB
@@ -238,6 +263,11 @@ Drag the chip anywhere on screen with a touch-and-drag.
 - This app uses `QUERY_ALL_PACKAGES` so the App Picker can show all
   launchable installed apps. That permission is restricted on Play
   Store but unrestricted for sideloaded debug builds.
+- IME "submit after typing" (`typeText` with `submit: true`) needs API
+  30+ (Android 11) — `AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER`
+  doesn't exist as a callable action below that. Below API 30 the text
+  still gets typed, it just won't auto-submit; tap a visible Enter/Go/
+  Search button via `tapMark` instead.
 
 ## Terms-of-service warning
 

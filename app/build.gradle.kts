@@ -36,6 +36,14 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    testOptions {
+        unitTests {
+            // Logger wraps android.util.Log; without this, calling it from a plain
+            // JVM unit test throws "not mocked" instead of just being a no-op.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -46,7 +54,18 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.activity:activity-ktx:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    testImplementation("junit:junit:4.13.2")
+    // Unit tests run on the plain JVM, not an Android device — org.json is normally
+    // provided by the Android runtime (per PROGRESS.md's "no org.json dependency"
+    // decision for the app itself), but test-only code needs a real implementation.
+    testImplementation("org.json:json:20240303")
 }

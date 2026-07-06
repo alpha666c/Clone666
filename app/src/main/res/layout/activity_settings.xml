@@ -203,6 +203,51 @@
             android:text="@string/settings_clear_web_search_key"
             android:textColor="@color/status_error" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/settings_ocr_script"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="13sp" />
+
+        <RadioGroup
+            android:id="@+id/ocrScriptGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/ocrLatinRadio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_ocr_latin" />
+
+            <RadioButton
+                android:id="@+id/ocrChineseRadio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_ocr_chinese" />
+
+            <RadioButton
+                android:id="@+id/ocrJapaneseRadio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_ocr_japanese" />
+
+            <RadioButton
+                android:id="@+id/ocrKoreanRadio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_ocr_korean" />
+
+            <RadioButton
+                android:id="@+id/ocrDevanagariRadio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_ocr_devanagari" />
+        </RadioGroup>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/saveBtn"
             android:layout_width="match_parent"

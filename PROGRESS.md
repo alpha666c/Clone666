@@ -36,11 +36,83 @@ the overlay → DecisionLoop runs: capture → think → act → wait.
 | G | Debug overlay + a11y fast path | done | (this batch) |
 | H | Reasoner/ScreenReader/ActionExecutor interface refactor | done | (this batch) |
 | I | Gemini provider + persistent per-game memory | done | 625302b |
-| J | Wake lock, ad/interruption recovery, structured memory, web research | done | (this batch) |
+| J | Wake lock, ad/interruption recovery, structured memory, web research | done | 18db172 |
+| K | Rotation handling, key encryption, IME/node-recycle fixes, multi-script OCR, unit tests | done | (this batch) |
 | - | Review-driven fixes (backup exclusions, dead code, privacy doc) | done | 694609a |
 | - | Gradle wrapper files + GitHub Actions APK build workflow | done | (this commit) |
 
-**Next batch: none queued — see "Batch J" below for what's next after that.**
+**Next batch: none queued.**
+
+## Batch K — fix everything the Batch J audit left open (this session)
+
+User asked for all six items the prior session flagged as "left open" to
+actually get fixed, not just documented, plus a fresh pass over every file
+Batch J hadn't touched. Verified locally (see the build recipe above) —
+`assembleDebug` succeeds, `testDebugUnitTest` passes 48/48.
+
+1. **Rotation handling, for real.** `ScreenCaptureManager` gained a
+   `resize()` that recreates the VirtualDisplay+ImageReader at new
+   dimensions using the *same* MediaProjection (no re-consent), and is
+   now fully synchronized (`synchronized(lock)` around start/resize/
+   captureLatest/tearDown) since resize can now race a concurrent tick's
+   `captureLatest()`. `AutopilotController.onConfigurationChanged()` was
+   previously an empty stub that wasn't even wired to anything —
+   `OverlayService` now overrides `onConfigurationChanged` and forwards
+   into it.
+2. **Fixed a real, silently-always-failing bug.** `submitImeAction()`
+   reflected on `AccessibilityNodeInfo::class.java.getDeclaredField
+   ("ACTION_IME_ENTER")` — that field has never existed on that class;
+   the real constant is the API-30+ public
+   `AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER`. The
+   reflection always threw and was silently swallowed by `runCatching`,
+   so `typeText`'s `submit: true` has never actually submitted anything
+   in any build. Fixed with the real API behind an `SDK_INT >= R` guard
+   (no accessibility-safe equivalent exists below API 30).
+3. **Fixed a node-recycling gap.** Neither `NodeTreeReader.traverse()`
+   nor `AutopilotAccessibilityService.findEditable()` recycled child
+   `AccessibilityNodeInfo` objects obtained via `getChild()` (only the
+   root was recycled) — on API 26-32 (before object pooling was
+   removed), running an 80-node traversal every tick for a long session
+   could exhaust the node pool. Both now recycle children they've
+   finished visiting.
+4. **Encrypted API keys at rest.** `SettingsRepository` moved from plain
+   `SharedPreferences` to `EncryptedSharedPreferences` (new file
+   `autopilot_settings_secure`, AES-256-SIV keys / AES-256-GCM values via
+   Android Keystore), with a one-time migration that copies any existing
+   plaintext `autopilot_settings` values over and wipes the old file —
+   existing installs don't lose settings or crash on upgrade. Falls back
+   to a plain (distinctly-named) file if Keystore is unavailable on the
+   device, rather than crashing every Settings access.
+5. **Multi-script OCR.** `OcrEngine` now takes an `OcrScript` (LATIN /
+   CHINESE / JAPANESE / KOREAN / DEVANAGARI) and picks the matching
+   ML Kit recognizer options class; `Settings.ocrScript` + a Settings
+   radio group expose it, `AutopilotController.start()` swaps the
+   `OcrEngine`/`ScreenReader` instances when the setting changes between
+   runs. All four extra ML Kit artifacts are the "unbundled" variant —
+   models download via Play Services on first use, not bundled in the
+   APK, so this doesn't bloat the base install.
+6. **Unit test suite.** `app/src/test/` now covers every pure-logic
+   class with no Android framework dependency: `RateLimiter`,
+   `PerceptualHash.hamming`, `Action.fromJson`/`shortLabel`,
+   `BrainResponseParser.parse`, `GameMemory`, `InterruptionRecovery`,
+   `A11yFastPath` — 48 tests, `./gradlew :app:testDebugUnitTest`. Needed
+   `testOptions.unitTests.isReturnDefaultValues = true` in
+   `app/build.gradle.kts` since `Logger` wraps `android.util.Log`, which
+   throws "not mocked" on a plain JVM test run otherwise; and a
+   test-only `org.json:json` dependency since production code relies on
+   Android shipping `org.json` natively (a deliberate decision — see
+   "Key decisions" below — that doesn't hold on a plain JVM test runner).
+
+**Deliberately left alone, and why:**
+- **One game per session** (singleton `AutopilotController`) — this
+  isn't a bug. Android has exactly one foreground app at a time, so
+  "run two autopilots at once" isn't a coherent ask on a single device;
+  building multi-instance support would add real complexity for a
+  scenario the OS doesn't actually allow.
+- **`AccessibilityService.onInterrupt()` being empty** — that's the
+  correct, normal implementation of that callback; there's nothing an
+  autopilot needs to do when the system interrupts accessibility
+  feedback. Not a stub, not a bug.
 
 ## Batch J — elite-autopilot gap closure (this session)
 

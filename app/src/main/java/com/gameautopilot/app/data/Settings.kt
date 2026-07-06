@@ -2,6 +2,9 @@ package com.gameautopilot.app.data
 
 enum class BrainProvider { OPENAI, NVIDIA, GEMINI }
 
+/** ML Kit only ships separate recognizer models per script family; pick one per game. */
+enum class OcrScript { LATIN, CHINESE, JAPANESE, KOREAN, DEVANAGARI }
+
 data class Settings(
     val baseUrl: String = DEFAULT_OPENAI_URL,
     val model: String = DEFAULT_OPENAI_MODEL,
@@ -14,7 +17,8 @@ data class Settings(
     val showDebugOverlay: Boolean = false,
     val useFastPath: Boolean = true,
     val webSearchApiKey: String = "",
-    val autoRecoverInterruptions: Boolean = true
+    val autoRecoverInterruptions: Boolean = true,
+    val ocrScript: OcrScript = OcrScript.LATIN
 ) {
     fun hasApiKey(): Boolean = apiKey.isNotBlank()
     fun hasWebSearchKey(): Boolean = webSearchApiKey.isNotBlank()

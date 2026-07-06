@@ -1,17 +1,26 @@
 package com.gameautopilot.app.vision
 
 import android.graphics.Bitmap
+import com.gameautopilot.app.data.OcrScript
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
+import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class OcrEngine {
-    private val recognizer: TextRecognizer =
-        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+/**
+ * ML Kit ships a separate on-device model per script family — a single
+ * recognizer can't read e.g. both Latin and Japanese well, so the game's
+ * script is a per-session choice (Settings) rather than autodetected.
+ */
+class OcrEngine(val script: OcrScript = OcrScript.LATIN) {
+    private val recognizer: TextRecognizer = TextRecognition.getClient(optionsFor(script))
 
     data class OcrLine(
         val text: String,
@@ -52,5 +61,15 @@ class OcrEngine {
 
     fun close() {
         runCatching { recognizer.close() }
+    }
+
+    companion object {
+        private fun optionsFor(script: OcrScript) = when (script) {
+            OcrScript.LATIN -> TextRecognizerOptions.DEFAULT_OPTIONS
+            OcrScript.CHINESE -> ChineseTextRecognizerOptions.Builder().build()
+            OcrScript.JAPANESE -> JapaneseTextRecognizerOptions.Builder().build()
+            OcrScript.KOREAN -> KoreanTextRecognizerOptions.Builder().build()
+            OcrScript.DEVANAGARI -> DevanagariTextRecognizerOptions.Builder().build()
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.gameautopilot.app.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -62,13 +63,19 @@ class AutopilotAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun submitImeAction(target: AccessibilityNodeInfo) {
-        runCatching {
-            val imeEnterAction = AccessibilityNodeInfo::class.java.getDeclaredField("ACTION_IME_ENTER")
-            imeEnterAction.isAccessible = true
-            val action = imeEnterAction.getInt(null)
-            target.performAction(action)
+    /**
+     * ACTION_IME_ENTER only exists as a public AccessibilityAction (API 30+) — there
+     * is no legacy int constant for it on AccessibilityNodeInfo itself, so on older
+     * OS versions there's no accessibility-service-safe way to submit an IME action.
+     */
+    private fun submitImeAction(target: AccessibilityNodeInfo): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            Logger.w("IME submit action requires API 30+ (device is ${Build.VERSION.SDK_INT})")
+            return false
         }
+        return runCatching {
+            target.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+        }.getOrDefault(false)
     }
 
     private fun findEditable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
@@ -78,6 +85,7 @@ class AutopilotAccessibilityService : AccessibilityService() {
             val child = node.getChild(i) ?: continue
             val found = findEditable(child)
             if (found != null) return found
+            runCatching { child.recycle() }
         }
         // Fallback: any editable
         if (node.isEditable) return node

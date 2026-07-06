@@ -64,7 +64,9 @@ object NodeTreeReader {
             )
         }
         for (i in 0 until node.childCount) {
-            traverse(node.getChild(i), lines, clickables)
+            val child = node.getChild(i)
+            traverse(child, lines, clickables)
+            runCatching { child?.recycle() }
             if (lines.size >= MAX_NODES) return
         }
     }

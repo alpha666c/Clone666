@@ -2,13 +2,15 @@ package com.gameautopilot.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import com.gameautopilot.app.util.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class SettingsRepository(context: Context) {
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = createPrefs(context).also { migrateFromLegacyPlaintext(context, it) }
 
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<Settings> = _settings.asStateFlow()
@@ -29,7 +31,10 @@ class SettingsRepository(context: Context) {
         showDebugOverlay = prefs.getBoolean(KEY_DEBUG_OVERLAY, false),
         useFastPath = prefs.getBoolean(KEY_FAST_PATH, true),
         webSearchApiKey = prefs.getString(KEY_SEARCH_KEY, "") ?: "",
-        autoRecoverInterruptions = prefs.getBoolean(KEY_AUTO_RECOVER, true)
+        autoRecoverInterruptions = prefs.getBoolean(KEY_AUTO_RECOVER, true),
+        ocrScript = runCatching {
+            OcrScript.valueOf(prefs.getString(KEY_OCR_SCRIPT, OcrScript.LATIN.name)!!)
+        }.getOrDefault(OcrScript.LATIN)
     )
 
     fun current(): Settings = _settings.value
@@ -48,6 +53,7 @@ class SettingsRepository(context: Context) {
             .putBoolean(KEY_FAST_PATH, s.useFastPath)
             .putString(KEY_SEARCH_KEY, s.webSearchApiKey)
             .putBoolean(KEY_AUTO_RECOVER, s.autoRecoverInterruptions)
+            .putString(KEY_OCR_SCRIPT, s.ocrScript.name)
             .apply()
         _settings.value = read()
     }
@@ -63,7 +69,9 @@ class SettingsRepository(context: Context) {
     }
 
     companion object {
-        const val PREFS_NAME = "autopilot_settings"
+        const val PREFS_NAME = "autopilot_settings_secure"
+        private const val LEGACY_PREFS_NAME = "autopilot_settings"
+        private const val KEY_MIGRATED = "migratedFromPlaintext"
         private const val KEY_BASE_URL = "baseUrl"
         private const val KEY_MODEL = "model"
         private const val KEY_API_KEY = "apiKey"
@@ -76,5 +84,55 @@ class SettingsRepository(context: Context) {
         private const val KEY_FAST_PATH = "useFastPath"
         private const val KEY_SEARCH_KEY = "webSearchApiKey"
         private const val KEY_AUTO_RECOVER = "autoRecoverInterruptions"
+        private const val KEY_OCR_SCRIPT = "ocrScript"
+
+        /**
+         * API keys used to live in plain SharedPreferences. EncryptedSharedPreferences
+         * needs its own master key + file, so this is a new file name, not a wrapper
+         * around the old one — reusing the old name would make the encryption layer
+         * try to decrypt already-plaintext bytes and throw on first read.
+         */
+        private fun createPrefs(context: Context): SharedPreferences = try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (t: Throwable) {
+            // A corrupted Keystore entry or a device without hardware-backed Keystore
+            // support shouldn't brick every Settings read — fall back to a plain,
+            // distinctly-named file rather than crash the app on every launch.
+            Logger.e("EncryptedSharedPreferences unavailable, falling back to plain prefs", t)
+            context.getSharedPreferences("${PREFS_NAME}_fallback", Context.MODE_PRIVATE)
+        }
+
+        /** One-time migration of any pre-existing plaintext settings into the encrypted store. */
+        private fun migrateFromLegacyPlaintext(context: Context, target: SharedPreferences) {
+            if (target.getBoolean(KEY_MIGRATED, false)) return
+            val legacy = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+            val legacyValues = legacy.all
+            if (legacyValues.isNotEmpty()) {
+                val editor = target.edit()
+                for ((key, value) in legacyValues) {
+                    when (value) {
+                        is String -> editor.putString(key, value)
+                        is Boolean -> editor.putBoolean(key, value)
+                        is Int -> editor.putInt(key, value)
+                        is Long -> editor.putLong(key, value)
+                        is Float -> editor.putFloat(key, value)
+                    }
+                }
+                editor.putBoolean(KEY_MIGRATED, true).apply()
+                legacy.edit().clear().apply()
+                Logger.i("Migrated ${legacyValues.size} legacy plaintext setting(s) into encrypted storage")
+            } else {
+                target.edit().putBoolean(KEY_MIGRATED, true).apply()
+            }
+        }
     }
 }

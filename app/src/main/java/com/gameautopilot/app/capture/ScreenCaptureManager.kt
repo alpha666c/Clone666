@@ -14,6 +14,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenCaptureManager(private val appContext: Context) {
 
+    /**
+     * Guards projection/reader/virtualDisplay/width/height together so a
+     * rotation-triggered resize() can never race captureLatest() reading a
+     * reader that resize just closed, or width/height that no longer match
+     * the reader actually in use.
+     */
+    private val lock = Any()
+
     private var projection: MediaProjection? = null
     private var reader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -31,8 +39,8 @@ class ScreenCaptureManager(private val appContext: Context) {
         }
     }
 
-    fun start(projection: MediaProjection, width: Int, height: Int, densityDpi: Int) {
-        if (running.get()) tearDown()
+    fun start(projection: MediaProjection, width: Int, height: Int, densityDpi: Int) = synchronized(lock) {
+        if (running.get()) tearDownLocked()
 
         this.projection = projection
         this.width = width
@@ -56,27 +64,57 @@ class ScreenCaptureManager(private val appContext: Context) {
         Logger.i("ScreenCapture started ${width}x$height")
     }
 
-    fun captureLatest(): Bitmap? {
-        val r = reader ?: return null
+    /**
+     * Recreates the VirtualDisplay + ImageReader at a new size without
+     * releasing the MediaProjection consent — used on rotation, where the
+     * user shouldn't have to re-grant capture permission just because the
+     * screen dimensions swapped.
+     */
+    fun resize(newWidth: Int, newHeight: Int, densityDpi: Int) = synchronized(lock) {
+        val proj = projection
+        if (!running.get() || proj == null) return@synchronized
+        if (newWidth == width && newHeight == height) return@synchronized
+
+        runCatching { virtualDisplay?.release() }
+        runCatching { reader?.close() }
+
+        width = newWidth
+        height = newHeight
+        reader = ImageReader.newInstance(newWidth, newHeight, PixelFormat.RGBA_8888, 3)
+        virtualDisplay = proj.createVirtualDisplay(
+            "AutopilotCapture",
+            newWidth, newHeight, densityDpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            reader!!.surface,
+            null,
+            handler
+        )
+        Logger.i("ScreenCapture resized to ${newWidth}x$newHeight")
+    }
+
+    fun captureLatest(): Bitmap? = synchronized(lock) {
+        val r = reader ?: return@synchronized null
+        val w = width
+        val h = height
         val image = try {
             r.acquireLatestImage()
         } catch (t: Throwable) {
             Logger.w("acquireLatestImage failed", t)
             null
-        } ?: return null
+        } ?: return@synchronized null
 
-        return try {
+        try {
             val plane = image.planes[0]
             val rowStride = plane.rowStride
             val pixelStride = plane.pixelStride
-            val rowPadding = rowStride - pixelStride * width
-            val paddedWidth = width + rowPadding / pixelStride
-            val padded = Bitmap.createBitmap(paddedWidth, height, Bitmap.Config.ARGB_8888)
+            val rowPadding = rowStride - pixelStride * w
+            val paddedWidth = w + rowPadding / pixelStride
+            val padded = Bitmap.createBitmap(paddedWidth, h, Bitmap.Config.ARGB_8888)
             padded.copyPixelsFromBuffer(plane.buffer)
-            if (paddedWidth == width) {
+            if (paddedWidth == w) {
                 padded
             } else {
-                val cropped = Bitmap.createBitmap(padded, 0, 0, width, height)
+                val cropped = Bitmap.createBitmap(padded, 0, 0, w, h)
                 padded.recycle()
                 cropped
             }
@@ -88,7 +126,9 @@ class ScreenCaptureManager(private val appContext: Context) {
         }
     }
 
-    fun tearDown() {
+    fun tearDown() = synchronized(lock) { tearDownLocked() }
+
+    private fun tearDownLocked() {
         if (!running.compareAndSet(true, false) && projection == null) return
         runCatching { virtualDisplay?.release() }
         runCatching { reader?.close() }

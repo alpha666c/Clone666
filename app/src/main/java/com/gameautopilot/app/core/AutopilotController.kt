@@ -35,14 +35,14 @@ class AutopilotController private constructor(private val appContext: Context) {
 
     private val settingsRepo = SettingsRepository(appContext)
     private val capture = ScreenCaptureManager(appContext)
-    private val ocr = OcrEngine()
+    private var ocr = OcrEngine(settingsRepo.current().ocrScript)
     private val recent = ActionRing()
     private val rate = RateLimiter(maxPerMinute = settingsRepo.current().maxActionsPerMinute)
     private val dispatcher: ActionExecutor = ActionDispatcher(
         screenWidth = { capture.width },
         screenHeight = { capture.height }
     )
-    private val screenReader: ScreenReader = DefaultScreenReader(capture, ocr)
+    private var screenReader: ScreenReader = DefaultScreenReader(capture, ocr)
     private val cycleLog = CycleLog(appContext).apply {
         setEnabled(settingsRepo.current().logCycles)
     }
@@ -106,6 +106,11 @@ class AutopilotController private constructor(private val appContext: Context) {
         rate.maxPerMinute = s.maxActionsPerMinute
         cycleLog.setEnabled(s.logCycles)
         brain = BrainFactory.create(s)
+        if (ocr.script != s.ocrScript) {
+            ocr.close()
+            ocr = OcrEngine(s.ocrScript)
+            screenReader = DefaultScreenReader(capture, ocr)
+        }
         val useMarks = s.useSetOfMarks
         fastPath = if (s.useFastPath) A11yFastPath() else null
         val loop = DecisionLoop(
@@ -199,8 +204,18 @@ class AutopilotController private constructor(private val appContext: Context) {
         }
     }
 
+    /**
+     * Recreates the capture VirtualDisplay at the post-rotation screen size
+     * without dropping the MediaProjection consent — called from
+     * OverlayService.onConfigurationChanged(). Marks (a11y/OCR boxes) are
+     * naturally rebuilt fresh from the next captured frame, so nothing else
+     * needs to be reset.
+     */
     fun onConfigurationChanged(@Suppress("UNUSED_PARAMETER") cfg: Configuration) {
-        // Reserved hook for rotation handling.
+        if (!isProjectionReady()) return
+        val (w, h, dpi) = displayMetrics()
+        capture.resize(w, h, dpi)
+        Logger.i("Configuration changed — resized capture to ${w}x$h")
     }
 
     companion object {

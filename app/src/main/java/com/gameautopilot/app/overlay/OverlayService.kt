@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -54,6 +55,11 @@ class OverlayService : Service() {
         super.onCreate()
         controller = AutopilotController.get(this)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        controller.onConfigurationChanged(newConfig)
     }
 
     /**
