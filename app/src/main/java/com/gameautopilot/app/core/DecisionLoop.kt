@@ -157,8 +157,9 @@ class DecisionLoop(
         val searchAction = decision.actions.firstOrNull { it is Action.WebSearch } as? Action.WebSearch
         if (searchAction != null) {
             onState(LoopPhase.THINKING, "Researching: ${searchAction.query.take(60)}")
-            pendingResearchNotes = if (webSearch != null) {
-                runCatching { webSearch.search(searchAction.query) }
+            val search = webSearch
+            pendingResearchNotes = if (search != null) {
+                runCatching { search.search(searchAction.query) }
                     .getOrElse { "Search failed: ${it.message}" }
             } else {
                 "(web search unavailable — no provider configured)"
