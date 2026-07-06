@@ -11,8 +11,10 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.gameautopilot.app.App
 import com.gameautopilot.app.R
+import com.gameautopilot.app.core.AutopilotController
 import com.gameautopilot.app.data.Game
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,6 +33,7 @@ class AddGameActivity : AppCompatActivity() {
     private lateinit var tickInput: TextInputEditText
     private lateinit var saveBtn: MaterialButton
     private lateinit var deleteBtn: MaterialButton
+    private lateinit var resetMemoryBtn: MaterialButton
     private lateinit var cancelBtn: MaterialButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +47,7 @@ class AddGameActivity : AppCompatActivity() {
         tickInput = findViewById(R.id.tickInput)
         saveBtn = findViewById(R.id.saveBtn)
         deleteBtn = findViewById(R.id.deleteBtn)
+        resetMemoryBtn = findViewById(R.id.resetMemoryBtn)
         cancelBtn = findViewById(R.id.cancelBtn)
 
         promptInput.hint = getString(R.string.game_prompt_hint)
@@ -60,6 +64,8 @@ class AddGameActivity : AppCompatActivity() {
         saveBtn.setOnClickListener { save() }
         deleteBtn.setOnClickListener { confirmDelete() }
         deleteBtn.visibility = if (editingId == null) View.GONE else View.VISIBLE
+        resetMemoryBtn.setOnClickListener { confirmResetMemory() }
+        resetMemoryBtn.visibility = if (editingId == null) View.GONE else View.VISIBLE
     }
 
     private fun populate(g: Game) {
@@ -123,6 +129,21 @@ class AddGameActivity : AppCompatActivity() {
         }
     }
 
+    private fun confirmResetMemory() {
+        val id = editingId ?: return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.reset_memory)
+            .setMessage(R.string.reset_memory_confirm)
+            .setPositiveButton(R.string.reset_memory) { _, _ ->
+                lifecycleScope.launch {
+                    AutopilotController.get(this@AddGameActivity).memoryStore().clear(id)
+                    Snackbar.make(resetMemoryBtn, R.string.reset_memory_done, Snackbar.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun confirmDelete() {
         val id = editingId ?: return
         AlertDialog.Builder(this)
@@ -131,6 +152,7 @@ class AddGameActivity : AppCompatActivity() {
             .setPositiveButton(R.string.delete) { _, _ ->
                 lifecycleScope.launch {
                     App.get().gameRepository.delete(id)
+                    AutopilotController.get(this@AddGameActivity).memoryStore().clear(id)
                     finish()
                 }
             }

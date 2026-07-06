@@ -9,10 +9,13 @@ be reachable from a different container — this file is the durable copy).
 
 The autopilot is an AI brain that watches the screen via MediaProjection
 + accessibility + ML Kit OCR, calls a cloud LLM (OpenAI-compatible:
-OpenAI, NVIDIA NIM, any compatible vision model), and dispatches taps /
-swipes / waits via accessibility gestures. A persistent overlay sits on
-top of the running game with Start / Stop / Quit. Per-game knowledge
-lives in each game's system prompt, stored in a small game library.
+OpenAI, NVIDIA NIM, any compatible vision model — or Google Gemini via
+its own `generateContent` REST brain), and dispatches taps / swipes /
+waits via accessibility gestures. A persistent overlay sits on top of
+the running game with Start / Stop / Quit. Per-game knowledge lives in
+each game's system prompt plus a small persistent per-game **memory**
+(goal/progress notes the brain writes itself), stored in a small game
+library.
 
 User flow: open app → game library → tap "+" to add a game (pick app,
 name, system prompt, tick rate) → Settings to set API key + model →
@@ -30,10 +33,74 @@ the overlay → DecisionLoop runs: capture → think → act → wait.
 | D | UI + overlay + wiring (Activities, GameListAdapter, OverlayService) | done | f0a5fb5 |
 | E | README + verification pass | done | 0770aef |
 | F | Set-of-marks + TypeText + stuck-state + cycle log | done | 4740b3d |
-| G | Debug overlay + a11y fast path | **wip** | (this commit) |
+| G | Debug overlay + a11y fast path | **wip** | 3c9c1d1 (unpushed — see below) |
 | H | Reasoner/ScreenReader/ActionExecutor interface refactor | not done | - |
+| I | Gemini provider + persistent per-game memory | done | (this commit) |
 
 **Next batch: finish G, then H.**
+
+## Push access note (2026-07-06)
+
+Commits `3c9c1d1` (batch G, wip) and this Batch I commit are sitting on
+the local branch `claude/android-game-autopilot-7mc6mx` **unpushed**.
+`git push` fails with `Permission to viktorhedklin/Androidapp.git denied
+to alpha666c` — the GitHub identity behind this session has read access
+(fetch/branch-list work fine) but not write access. The repo owner needs
+to grant `alpha666c` collaborator/write access (or fix the GitHub App
+installation) before any further pushes can land. Diagnosed via direct
+curl against the git relay (`127.0.0.1:41729`) and the GitHub MCP tools —
+not a proxy glitch, a real permissions gap. Next session: check whether
+push works now before assuming it's still blocked.
+
+## Batch I — Gemini provider + persistent per-game memory (done)
+
+**Gemini provider:**
+- `brain/PromptBuilder.kt` (new) + `brain/BrainResponseParser.kt` (new) +
+  `brain/CallAwait.kt` (new) — extracted the system/user prompt text and
+  the strict-JSON response parsing out of `OpenAiCompatibleBrain` so both
+  it and the new `GeminiBrain` share identical prompt/schema logic; only
+  the HTTP envelope differs per provider.
+- `brain/GeminiBrain.kt` (new) — calls Gemini's `generateContent` REST
+  endpoint (`system_instruction` + `contents[].parts[]` with
+  `inline_data` base64 image, `generationConfig.responseMimeType =
+  "application/json"`), auth via `x-goog-api-key` header. Reports
+  `promptFeedback.blockReason` in the exception when Gemini blocks a
+  response instead of just failing opaquely.
+- `data/Settings.kt` — `useNvidia: Boolean` replaced with
+  `provider: BrainProvider` (`OPENAI`/`NVIDIA`/`GEMINI` enum) plus
+  `defaultUrlFor`/`defaultModelFor` helpers. Default Gemini model is
+  `gemini-3.5-flash` (GA as of mid-2026, vision-capable, supports
+  Computer Use) — **not** `gemini-3.5-pro`, which per Google's own
+  materials is scheduled to ship ~2026-07-17 and doesn't exist yet as an
+  API model id. Once it (or any newer model) ships, just paste its model
+  id into Settings → Model — no code change needed.
+- `data/SettingsRepository.kt` — persists `provider` as a string enum
+  name instead of the old boolean pref key.
+- `ui/SettingsActivity.kt` + `res/layout/activity_settings.xml` — the
+  provider toggle became a 3-way `RadioGroup` (OpenAI / NVIDIA NIM /
+  Google Gemini) since a boolean switch no longer fits 3 options.
+- `brain/BrainFactory.kt` — branches on `settings.provider`.
+
+**Persistent per-game memory:**
+- `brain/Brain.kt` — `BrainContext.gameMemory: String` (fed into the
+  prompt each tick) and `BrainDecision.memoryUpdate: String?` (brain
+  writes back an updated summary when something worth remembering
+  happened — current goal, progress, what to try next).
+- `data/GameMemoryStore.kt` (new) — one small text file per game at
+  `filesDir/memory/{gameId}.txt`, capped at 4000 chars.
+- `core/DecisionLoop.kt` — constructor gained `initialMemory` +
+  `onMemoryUpdate`; keeps memory in a `@Volatile var`, includes it in
+  every `BrainContext`, and calls back out when the brain updates it.
+- `core/AutopilotController.kt` — loads memory from `GameMemoryStore` in
+  `start()`, persists updates via the loop's callback (fire-and-forget
+  `scope.launch`). Memory intentionally survives `stop()`/`quit()` — the
+  whole point is that it persists across sessions.
+- `ui/AddGameActivity.kt` + `activity_add_game.xml` — **Reset memory**
+  button (visible only when editing an existing game), separate from
+  **Delete**. Deleting a game also clears its memory file.
+- `PromptBuilder.kt`'s system prompt documents the optional `"memory"`
+  JSON field and instructs the brain to keep it under ~120 words and
+  only update it when something changed.
 
 ## Batch G — in progress (paused before session limit)
 

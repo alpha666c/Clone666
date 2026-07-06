@@ -15,6 +15,7 @@ import com.gameautopilot.app.brain.BrainFactory
 import com.gameautopilot.app.capture.ScreenCaptureManager
 import com.gameautopilot.app.capture.ScreenshotEncoder
 import com.gameautopilot.app.data.Game
+import com.gameautopilot.app.data.GameMemoryStore
 import com.gameautopilot.app.data.Settings
 import com.gameautopilot.app.data.SettingsRepository
 import com.gameautopilot.app.util.Logger
@@ -49,6 +50,7 @@ class AutopilotController private constructor(private val appContext: Context) {
     private val cycleLog = CycleLog(appContext).apply {
         setEnabled(settingsRepo.current().logCycles)
     }
+    private val memoryStore = GameMemoryStore(appContext)
 
     @Volatile var currentGame: Game? = null
         private set
@@ -62,6 +64,7 @@ class AutopilotController private constructor(private val appContext: Context) {
 
     fun settings(): Settings = settingsRepo.current()
     fun settingsRepo(): SettingsRepository = settingsRepo
+    fun memoryStore(): GameMemoryStore = memoryStore
 
     fun selectGame(game: Game) {
         currentGame = game
@@ -114,6 +117,8 @@ class AutopilotController private constructor(private val appContext: Context) {
             gamePackage = game.packageName,
             gameSystemPrompt = game.systemPrompt,
             onlyActOnTargetPackage = s.onlyActOnTarget,
+            initialMemory = memoryStore.get(game.id),
+            onMemoryUpdate = { text -> scope.launch { memoryStore.set(game.id, text) } },
             onState = { phase, note -> updatePhase(phase, note) },
             onCycle = { rec ->
                 cycleLog.write(

@@ -19,11 +19,33 @@
             android:textSize="13sp"
             android:layout_marginBottom="4dp" />
 
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/providerSwitch"
+        <RadioGroup
+            android:id="@+id/providerGroup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="NVIDIA NIM (off = OpenAI)" />
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/providerOpenAiRadio"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_provider_openai" />
+
+            <RadioButton
+                android:id="@+id/providerNvidiaRadio"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_provider_nvidia" />
+
+            <RadioButton
+                android:id="@+id/providerGeminiRadio"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_provider_gemini" />
+        </RadioGroup>
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"

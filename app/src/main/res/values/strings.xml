@@ -21,6 +21,9 @@
     <string name="pick_app">Pick installed app</string>
 
     <string name="settings_api_provider">API provider</string>
+    <string name="settings_provider_openai">OpenAI</string>
+    <string name="settings_provider_nvidia">NVIDIA NIM</string>
+    <string name="settings_provider_gemini">Google Gemini</string>
     <string name="settings_base_url">Base URL</string>
     <string name="settings_api_key">API key</string>
     <string name="settings_model">Model</string>
@@ -31,6 +34,10 @@
     <string name="settings_clear_api_key">Clear API key</string>
     <string name="settings_api_key_set">API key is set</string>
     <string name="settings_api_key_not_set">No API key configured</string>
+
+    <string name="reset_memory">Reset memory</string>
+    <string name="reset_memory_confirm">Forget everything the AI has learned about this game\'s progress? This cannot be undone.</string>
+    <string name="reset_memory_done">Memory cleared</string>
 
     <string name="perm_accessibility">Accessibility service</string>
     <string name="perm_overlay">Display over other apps</string>

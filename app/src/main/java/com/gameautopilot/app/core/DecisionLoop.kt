@@ -27,12 +27,15 @@ class DecisionLoop(
     private val gamePackage: String,
     private val gameSystemPrompt: String,
     private val onlyActOnTargetPackage: Boolean,
+    initialMemory: String = "",
+    private val onMemoryUpdate: (String) -> Unit = {},
     private val onState: suspend (LoopPhase, String?) -> Unit,
     private val onCycle: (CycleRecord) -> Unit = {}
 ) {
 
     private val recentHashes = ArrayDeque<Long>(STUCK_WINDOW)
     private var stuckCount = 0
+    @Volatile private var memory: String = initialMemory
 
     /** @return delay (ms) before the next tick should run. */
     suspend fun tick(): Long {
@@ -80,7 +83,8 @@ class DecisionLoop(
             a11yLines = snapshot.a11yLines,
             marks = snapshot.marks,
             recentActionLabels = recent.snapshot(),
-            stuckHint = stuckHint
+            stuckHint = stuckHint,
+            gameMemory = memory
         )
 
         val decision = try {
@@ -95,6 +99,12 @@ class DecisionLoop(
             onState(LoopPhase.ERROR, t.message ?: "error")
             onCycle(CycleRecord(snapshot, "(crash: ${t.message})", emptyList(), emptyList(), delta))
             return baseTickIntervalMs.coerceAtLeast(2_000L)
+        }
+
+        val newMemory = decision.memoryUpdate
+        if (newMemory != null && newMemory != memory) {
+            memory = newMemory
+            onMemoryUpdate(newMemory)
         }
 
         if (decision.actions.isEmpty()) {

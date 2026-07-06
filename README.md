@@ -22,8 +22,8 @@ Kotlin 1.9.24 · AGP 8.5.2 · sideload-only.
         |                                     |                                     |
 +---------------+              +----------------------------+              +-----------------+
 | ScreenCapture |              | AutopilotAccessibilitySvc  |              | LLM brain       |
-| MediaProj +   |  ── frames ─►|  reads node tree +         |              | OpenAI/NVIDIA   |
-| ImageReader   |              |  dispatches gestures       |              | vision chat     |
+| MediaProj +   |  ── frames ─►|  reads node tree +         |              | OpenAI/NVIDIA/  |
+| ImageReader   |              |  dispatches gestures       |              | Gemini vision   |
 +-------+-------+              +-------------+--------------+              +--------+--------+
         │                                    ▲                                      ▲
         │ Bitmap                             │ Action (tap/swipe/back/...)          │ image+text
@@ -42,12 +42,13 @@ Each tick the loop:
 3. Flattens the accessibility tree into bounded text/clickable nodes
    (capped at 80).
 4. Builds a `BrainContext` (game prompt, screenshot base64, OCR lines,
-   a11y lines, screen size, recent actions).
-5. Calls an OpenAI-compatible `/chat/completions` endpoint with a
-   strict-JSON response format. The brain must return:
+   a11y lines, screen size, recent actions, persisted per-game memory).
+5. Calls the configured provider — an OpenAI-compatible `/chat/completions`
+   endpoint (OpenAI, NVIDIA NIM) or Gemini's `generateContent` REST API —
+   with a strict-JSON response format. The brain must return:
    ```json
    { "thought": "...", "actions": [{"type":"tap","x":540,"y":1280}, ...],
-     "confidence": 0.0-1.0 }
+     "confidence": 0.0-1.0, "memory": "optional persistent notes" }
    ```
 6. Dispatches each action via `AccessibilityService.dispatchGesture()`
    (taps and swipes) or `GLOBAL_ACTION_BACK`. `wait` actions extend the
@@ -84,24 +85,45 @@ does not let apps store this token across sessions.
 
 ## API key setup
 
-Settings → **API provider** toggle:
+Settings → **API provider** (radio group, three options):
 
-- **Off (default) = OpenAI.** Base URL `https://api.openai.com/v1`,
+- **OpenAI (default).** Base URL `https://api.openai.com/v1`,
   default model `gpt-4o-mini` (vision-capable). Paste your `sk-...` key.
-- **On = NVIDIA NIM.** Base URL `https://integrate.api.nvidia.com/v1`,
+- **NVIDIA NIM.** Base URL `https://integrate.api.nvidia.com/v1`,
   default model `meta/llama-3.2-90b-vision-instruct`. Paste your `nvapi-...`
   key from build.nvidia.com.
+- **Google Gemini.** Base URL `https://generativelanguage.googleapis.com/v1beta`,
+  default model `gemini-3.5-flash` (GA, vision-capable, supports Computer
+  Use). Paste your Gemini API key from Google AI Studio. If you want a
+  different Gemini model (e.g. a newer "Pro"-tier release once one ships),
+  just type its model id into the **Model** field — no code change needed.
 
-Any OpenAI-compatible base URL + vision-capable model works (e.g.
-LM Studio, vLLM, Together AI's OpenAI-compatible endpoints). Anthropic
-and Gemini are **not** OpenAI-shaped and would need a new `Brain`
-implementation.
+Any OpenAI-compatible base URL + vision-capable model also works under the
+OpenAI/NVIDIA options (e.g. LM Studio, vLLM, Together AI's
+OpenAI-compatible endpoints). Anthropic is the remaining major provider
+that's neither OpenAI-shaped nor Gemini-shaped and would need its own
+`Brain` implementation.
 
 **API key storage:** plain `SharedPreferences` at
 `/data/data/com.gameautopilot.app/shared_prefs/autopilot_settings.xml`.
 This is per-user app-private storage, but it is *not* encrypted at rest.
 The file is excluded from cloud backup and device transfer. Use the
 **Clear API key** button in Settings to wipe it.
+
+## Per-game memory
+
+Each game keeps a small persistent free-text "memory" (current goal,
+progress milestones, what to try next) written by the brain itself. The
+brain's JSON response has an optional `memory` field; whenever it's
+present, `DecisionLoop` replaces the stored memory and `AutopilotController`
+persists it to `filesDir/memory/{gameId}.txt` (capped at 4000 characters).
+The next tick — and the next time you launch the game, even after an app
+restart — includes that memory in the prompt, so the brain doesn't have to
+rediscover "I'm on level 12 with 3 lives" from scratch every session.
+
+Edit a game → **Reset memory** clears its stored notes (separate from
+**Delete**, which removes the whole game). Deleting a game also clears its
+memory file.
 
 ## Adding a game
 
@@ -187,8 +209,8 @@ app/src/main/
     ├── App.kt                            Application + notif channel
     ├── MainActivity.kt                   game library entry
     ├── ui/                               activities + adapters
-    ├── data/                             Game + Settings repos
-    ├── brain/                            OpenAI-compatible LLM brain
+    ├── data/                             Game + Settings repos, per-game memory
+    ├── brain/                            OpenAI-compatible + Gemini brains
     ├── core/                             Action, ScreenSnapshot, DecisionLoop,
     │                                     AutopilotController, RateLimiter
     ├── accessibility/                    a11y service + node reader + gestures

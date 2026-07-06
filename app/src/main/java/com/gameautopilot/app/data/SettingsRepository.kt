@@ -21,7 +21,9 @@ class SettingsRepository(context: Context) {
         apiKey = prefs.getString(KEY_API_KEY, "") ?: "",
         maxActionsPerMinute = prefs.getInt(KEY_RATE, 30).coerceIn(1, 600),
         onlyActOnTarget = prefs.getBoolean(KEY_ONLY_TARGET, true),
-        useNvidia = prefs.getBoolean(KEY_USE_NVIDIA, false),
+        provider = runCatching {
+            BrainProvider.valueOf(prefs.getString(KEY_PROVIDER, BrainProvider.OPENAI.name)!!)
+        }.getOrDefault(BrainProvider.OPENAI),
         useSetOfMarks = prefs.getBoolean(KEY_USE_SOM, true),
         logCycles = prefs.getBoolean(KEY_LOG_CYCLES, true)
     )
@@ -35,7 +37,7 @@ class SettingsRepository(context: Context) {
             .putString(KEY_API_KEY, s.apiKey)
             .putInt(KEY_RATE, s.maxActionsPerMinute.coerceIn(1, 600))
             .putBoolean(KEY_ONLY_TARGET, s.onlyActOnTarget)
-            .putBoolean(KEY_USE_NVIDIA, s.useNvidia)
+            .putString(KEY_PROVIDER, s.provider.name)
             .putBoolean(KEY_USE_SOM, s.useSetOfMarks)
             .putBoolean(KEY_LOG_CYCLES, s.logCycles)
             .apply()
@@ -54,7 +56,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_API_KEY = "apiKey"
         private const val KEY_RATE = "maxActionsPerMinute"
         private const val KEY_ONLY_TARGET = "onlyActOnTarget"
-        private const val KEY_USE_NVIDIA = "useNvidia"
+        private const val KEY_PROVIDER = "provider"
         private const val KEY_USE_SOM = "useSetOfMarks"
         private const val KEY_LOG_CYCLES = "logCycles"
     }
