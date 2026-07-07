@@ -8,22 +8,21 @@ import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.gameautopilot.app.overlay.OverlayService
-import com.gameautopilot.app.util.Logger
 
 /**
  * Transparent activity that hosts the MediaProjection consent dialog.
  * Required because MediaProjectionManager.createScreenCaptureIntent() must
  * be launched via startActivityForResult from an Activity context. Must run
- * to completion (consent granted) BEFORE OverlayService starts — on API 34+,
- * starting a mediaProjection-typed foreground service before the projection
- * is registered throws a SecurityException at runtime.
+ * to completion (consent granted) BEFORE OverlayService starts — a
+ * mediaProjection-typed foreground service needs a live capture grant to
+ * exist before startForeground() will succeed on API 34+. See
+ * OverlayService.handleAttach() for the rest of the ordering constraints.
  */
 class ProjectionRequestActivity : AppCompatActivity() {
 
     private val launcher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        Logger.i("Projection result received t=${android.os.SystemClock.elapsedRealtime()}")
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             OverlayService.attachProjection(this, result.resultCode, result.data!!)
         } else {

@@ -52,10 +52,8 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Logger.i("OverlayService.onCreate start t=${android.os.SystemClock.elapsedRealtime()}")
         controller = AutopilotController.get(this)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        Logger.i("OverlayService.onCreate done t=${android.os.SystemClock.elapsedRealtime()}")
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -86,7 +84,6 @@ class OverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Logger.i("OverlayService.onStartCommand action=${intent?.action} t=${android.os.SystemClock.elapsedRealtime()}")
         when (intent?.action) {
             ACTION_ATTACH_PROJECTION -> handleAttach(intent)
             ACTION_QUIT -> {
@@ -102,20 +99,25 @@ class OverlayService : Service() {
     }
 
     /**
-     * Two hard requirements collide here on API 34+, in this order:
-     * 1. startForeground() with type mediaProjection needs an already-registered
-     *    MediaProjection, or it throws SecurityException — so it can't run before
-     *    registerProjection().
-     * 2. startForegroundService() starts an OS watchdog that kills the process
-     *    with ForegroundServiceDidNotStartInTimeException if startForeground()
-     *    isn't called within a few seconds — so nothing slow (like creating the
-     *    VirtualDisplay, which can legitimately take a moment under memory/GPU
-     *    pressure) can run before it either.
-     * Hence the split: register (cheap) → startForeground (satisfies both
-     * constraints) → capture setup (however slow it needs to be, no deadline left).
+     * Order matters here and is easy to get backwards (this took three tries
+     * to get right, confirmed against real device logs each time):
+     * 1. By the time this runs, the user has already granted screen-capture
+     *    consent (resultCode/data prove it) — that alone satisfies the check
+     *    inside startForeground() that a mediaProjection-typed FGS needs a
+     *    live capture grant to exist.
+     * 2. MediaProjectionManager.getMediaProjection() has its OWN, separate
+     *    requirement in the other direction: it throws SecurityException
+     *    ("Media projections require a foreground service of type ...")
+     *    unless the mediaProjection-typed FGS is *already running* when
+     *    it's called.
+     * So: startForeground() must run before getMediaProjection(), not after.
+     * Getting this backwards doesn't show up as this SecurityException
+     * directly in the crash log if it's caught here — it surfaces as the
+     * much more confusing ForegroundServiceDidNotStartInTimeException,
+     * because stopSelf() after catching it still counts as "stopped without
+     * ever calling startForeground."
      */
     private fun handleAttach(intent: Intent) {
-        Logger.i("handleAttach start t=${android.os.SystemClock.elapsedRealtime()}")
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
         val data: Intent? = intent.getParcelableExtra(EXTRA_RESULT_DATA)
         if (data == null) {
@@ -123,6 +125,7 @@ class OverlayService : Service() {
             handleQuit()
             return
         }
+        startForegroundCompat()
         val projection = try {
             controller.registerProjection(resultCode, data)
         } catch (t: Throwable) {
@@ -130,9 +133,6 @@ class OverlayService : Service() {
             handleQuit()
             return
         }
-        Logger.i("registerProjection done t=${android.os.SystemClock.elapsedRealtime()}")
-        startForegroundCompat()
-        Logger.i("startForegroundCompat done t=${android.os.SystemClock.elapsedRealtime()}")
         try {
             controller.startCapture(projection)
         } catch (t: Throwable) {
@@ -140,7 +140,6 @@ class OverlayService : Service() {
             handleQuit()
             return
         }
-        Logger.i("startCapture done t=${android.os.SystemClock.elapsedRealtime()}")
         acquireWakeLock()
         showOverlay()
         showDebugOverlayIfEnabled()
