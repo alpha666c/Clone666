@@ -197,16 +197,7 @@ class OverlayService : Service() {
         debugOverlayView = null
     }
 
-    private fun launchTargetGame() {
-        val pkg = controller.currentGame?.packageName ?: return
-        val launch = packageManager.getLaunchIntentForPackage(pkg)
-        if (launch == null) {
-            Logger.w("No launch intent for $pkg")
-            return
-        }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-        startActivity(launch)
-    }
+    private fun launchTargetGame() = controller.relaunchTargetGame()
 
     private fun startForegroundCompat() {
         val notif = buildNotification()

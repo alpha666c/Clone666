@@ -17,6 +17,7 @@ import com.gameautopilot.app.data.Settings
 import com.gameautopilot.app.data.SettingsRepository
 import com.gameautopilot.app.util.Logger
 import com.gameautopilot.app.vision.OcrEngine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -137,6 +138,7 @@ class AutopilotController private constructor(private val appContext: Context) {
             gameSystemPrompt = game.systemPrompt,
             onlyActOnTargetPackage = s.onlyActOnTarget,
             autoRecoverInterruptions = s.autoRecoverInterruptions,
+            onRelaunch = { relaunchTargetGame() },
             initialMemory = memoryStore.get(game.id),
             onMemoryUpdate = { mem -> scope.launch { memoryStore.set(game.id, mem) } },
             onState = { phase, note -> updatePhase(phase, note) },
@@ -164,6 +166,13 @@ class AutopilotController private constructor(private val appContext: Context) {
             while (isActive) {
                 val nextDelay = try {
                     loop.tick()
+                } catch (c: CancellationException) {
+                    // stop()/quit() cancel this job while a tick is suspended (mid-brain-call,
+                    // mid-delay, etc.) — that surfaces here as a CancellationException. Swallowing
+                    // it as a generic Throwable was reporting a normal stop as "Tick crashed" and
+                    // briefly clobbering the state we'd just set to Idle with an Error; rethrowing
+                    // lets structured concurrency finish cancelling this coroutine as intended.
+                    throw c
                 } catch (t: Throwable) {
                     Logger.e("Tick crashed", t)
                     _state.value = AutopilotState.Error(t.message ?: "tick crashed")
@@ -174,6 +183,23 @@ class AutopilotController private constructor(private val appContext: Context) {
         }
         Logger.i("Autopilot started for ${game.name}")
         return true
+    }
+
+    /**
+     * Brings the target game back to the foreground directly. Used both for the
+     * initial launch after attaching the projection, and as a recovery step when
+     * the game has been fully backgrounded (e.g. kicked to the launcher) — in
+     * that case BACK has nothing to go back to and just does nothing forever.
+     */
+    fun relaunchTargetGame() {
+        val pkg = currentGame?.packageName ?: return
+        val launch = appContext.packageManager.getLaunchIntentForPackage(pkg)
+        if (launch == null) {
+            Logger.w("No launch intent for $pkg")
+            return
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        appContext.startActivity(launch)
     }
 
     fun stop() {

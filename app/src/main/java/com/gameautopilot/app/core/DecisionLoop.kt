@@ -31,6 +31,7 @@ class DecisionLoop(
     private val gameSystemPrompt: String,
     private val onlyActOnTargetPackage: Boolean,
     private val autoRecoverInterruptions: Boolean = true,
+    private val onRelaunch: () -> Unit = {},
     initialMemory: GameMemory = GameMemory(),
     private val onMemoryUpdate: (GameMemory) -> Unit = {},
     private val onState: suspend (LoopPhase, String?) -> Unit,
@@ -70,6 +71,27 @@ class DecisionLoop(
             if (autoRecoverInterruptions && interruptionAttempts < MAX_INTERRUPTION_ATTEMPTS) {
                 interruptionAttempts++
                 val recovery = InterruptionRecovery.findRecoveryAction(snapshot.marks)
+                // BACK only helps when the game is still around but covered by a dialog/ad —
+                // if there's no dismiss-looking mark AND a previous BACK already failed to
+                // bring it back (e.g. the game got kicked all the way to the home launcher,
+                // which has no back stack to pop), pressing BACK again just does nothing
+                // forever. Relaunch the game directly instead.
+                if (recovery is Action.Back && interruptionAttempts >= 2) {
+                    Logger.i(
+                        "Off-target foreground=${snapshot.foregroundPackage} — " +
+                            "BACK didn't recover it, relaunching $gamePackage"
+                    )
+                    onState(LoopPhase.ACTING, "Relaunching…")
+                    onRelaunch()
+                    onCycle(
+                        CycleRecord(
+                            snapshot,
+                            "(auto-recovery: relaunching $gamePackage)",
+                            listOf("relaunch"), listOf(true), -1
+                        )
+                    )
+                    return (baseTickIntervalMs + 1500L).coerceAtLeast(1500L)
+                }
                 Logger.i(
                     "Off-target foreground=${snapshot.foregroundPackage} — " +
                         "recovery attempt $interruptionAttempts/${MAX_INTERRUPTION_ATTEMPTS}: ${recovery.shortLabel()}"
