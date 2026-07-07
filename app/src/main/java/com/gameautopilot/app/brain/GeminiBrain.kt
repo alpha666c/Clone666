@@ -71,12 +71,23 @@ class GeminiBrain(
         })
         put("generationConfig", JSONObject().apply {
             put("temperature", 0.2)
-            // 800 was too tight in practice: thinking-capable Gemini models spend part
-            // of this budget on an internal reasoning pass before writing the final
-            // answer, which was leaving too little room to finish the JSON and
-            // truncating it mid-string on nearly every real call.
-            put("maxOutputTokens", 3072)
+            // Raising this alone (800 -> 3072) didn't fix truncation: on thinking-
+            // capable Gemini models, maxOutputTokens is a shared budget that the
+            // model's internal reasoning pass draws from FIRST, before it writes a
+            // single character of the visible answer. A hard scene (lots of marks,
+            // an unfamiliar game) can burn the whole budget on thinking and leave
+            // nothing for the JSON itself, no matter how high this number is.
+            // Disabling thinking outright is the actual fix for a task like this —
+            // one small structured JSON decision doesn't need a hidden reasoning
+            // pass — and it makes token usage predictable again.
+            put("maxOutputTokens", 4096)
             put("responseMimeType", "application/json")
+            put("thinkingConfig", JSONObject().apply {
+                // "-pro" models reject a budget of 0 (128 is their floor); every other
+                // Gemini family (flash, flash-lite, and their numbered successors)
+                // accepts 0 to fully disable the hidden reasoning pass.
+                put("thinkingBudget", if (model.contains("pro", ignoreCase = true)) 128 else 0)
+            })
         })
     }
 

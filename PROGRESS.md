@@ -409,3 +409,46 @@ references classes (`App`, `MainActivity`, `ui.*`, `accessibility.*`,
 `overlay.OverlayService`) that don't exist until Batches B–D. This is
 intentional pacing; the next batch is meaningful work and the manifest
 is locked in.
+
+## On-device debugging round (real emulator, not just compile)
+
+Verified on an AVD (`android-34;google_apis;arm64-v8a`) since no physical
+phone was available in this environment. Found and fixed, in order, via
+real crash logs (`adb logcat`):
+
+1. `SecurityException` starting the FGS before MediaProjection consent
+   existed — moved consent (`ProjectionRequestActivity`) before
+   `OverlayService` starts at all.
+2. `ForegroundServiceDidNotStartInTimeException` masking the real cause —
+   `getMediaProjection()` must be called AFTER `startForeground()`, not
+   before. Fixed the ordering in `OverlayService.handleAttach()`.
+3. `SecurityException` on rotation — `ScreenCaptureManager.resize()` was
+   calling `createVirtualDisplay()` a second time on the same
+   `MediaProjection` token, which Android forbids. Fixed to resize the
+   existing `VirtualDisplay` in place.
+4. Self-inflicted foreground misdetection — the overlay's own status-text
+   updates fired `TYPE_WINDOW_CONTENT_CHANGED` for our own package,
+   constantly overwriting `foregroundPackage` and triggering bogus
+   interruption-recovery taps (one of which hit the overlay's own Close
+   button and self-quit the session). Fixed by excluding our own
+   `packageName` in `AutopilotAccessibilityService`.
+5. Permissions screen navigation — `FLAG_ACTIVITY_NEW_TASK` on the
+   Accessibility/Overlay/Notification settings intents was launching
+   system Settings in a separate task, breaking the back stack (had to
+   force-close and reopen the app to get back to the dashboard). Removed
+   the flag; added close-button toolbars to `PermissionsActivity` and
+   `SettingsActivity` as a visible way out either way.
+6. Gemini JSON responses truncated at the token limit
+   (`finishReason: MAX_TOKENS`) even after raising `maxOutputTokens` from
+   800 to 3072 — the real cause is that `maxOutputTokens` is a *shared*
+   budget: on thinking-capable Gemini models, the hidden reasoning pass
+   draws from it first, and a hard scene could burn the whole thing
+   before writing a single character of the actual JSON answer. Fixed by
+   sending `generationConfig.thinkingConfig.thinkingBudget: 0`
+   (`128` for `-pro` models, which reject 0) in `GeminiBrain`, plus a
+   further bump to `maxOutputTokens: 4096` as headroom. This is the
+   correct fix for a small structured-decision task like this one, which
+   doesn't benefit from a hidden reasoning pass anyway.
+
+All fixes verified with the standard local recipe:
+`ANDROID_HOME=/opt/android-sdk gradle :app:assembleDebug :app:testDebugUnitTest`.
