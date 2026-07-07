@@ -71,7 +71,11 @@ class GeminiBrain(
         })
         put("generationConfig", JSONObject().apply {
             put("temperature", 0.2)
-            put("maxOutputTokens", 800)
+            // 800 was too tight in practice: thinking-capable Gemini models spend part
+            // of this budget on an internal reasoning pass before writing the final
+            // answer, which was leaving too little room to finish the JSON and
+            // truncating it mid-string on nearly every real call.
+            put("maxOutputTokens", 3072)
             put("responseMimeType", "application/json")
         })
     }
@@ -83,12 +87,16 @@ class GeminiBrain(
             val blockReason = outer.optJSONObject("promptFeedback")?.optString("blockReason")
             throw BrainException("No candidates in response" + (blockReason?.let { " (blocked: $it)" } ?: ""))
         }
-        val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
+        val firstCandidate = candidates.getJSONObject(0)
+        val parts = firstCandidate.optJSONObject("content")?.optJSONArray("parts")
             ?: throw BrainException("No content parts in first candidate")
         val text = (0 until parts.length())
             .mapNotNull { idx -> parts.getJSONObject(idx).takeIf { it.has("text") }?.getString("text") }
             .joinToString("")
         if (text.isBlank()) throw BrainException("Empty text from Gemini response")
+        if (firstCandidate.optString("finishReason") == "MAX_TOKENS") {
+            throw BrainException("Response cut off at the token limit before finishing its JSON — raise maxOutputTokens")
+        }
         return BrainResponseParser.parse(text)
     }
 

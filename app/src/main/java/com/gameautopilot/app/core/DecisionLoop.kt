@@ -1,5 +1,6 @@
 package com.gameautopilot.app.core
 
+import com.gameautopilot.app.accessibility.AutopilotAccessibilityService
 import com.gameautopilot.app.brain.Brain
 import com.gameautopilot.app.brain.BrainContext
 import com.gameautopilot.app.brain.BrainException
@@ -51,6 +52,15 @@ class DecisionLoop(
         if (snapshot == null) {
             onState(LoopPhase.IDLE, "No frame available")
             return baseTickIntervalMs
+        }
+
+        if (AutopilotAccessibilityService.get() == null) {
+            // Without this, a disconnected a11y service (system-toggled off, killed
+            // under memory pressure, etc.) was invisible: the loop kept calling the
+            // brain every tick and burning API spend on responses it could never
+            // dispatch, silently logging "Cannot dispatch" once per tick instead.
+            onState(LoopPhase.ERROR, "Accessibility service disconnected — re-enable it in Settings")
+            return baseTickIntervalMs.coerceAtLeast(2_000L)
         }
 
         if (onlyActOnTargetPackage &&

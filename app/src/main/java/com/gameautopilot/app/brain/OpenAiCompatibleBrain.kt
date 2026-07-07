@@ -66,7 +66,7 @@ class OpenAiCompatibleBrain(
         return JSONObject().apply {
             put("model", model)
             put("temperature", 0.2)
-            put("max_tokens", 800)
+            put("max_tokens", 1500)
             put("response_format", JSONObject().apply { put("type", "json_object") })
             put("messages", JSONArray().apply {
                 put(systemMsg)
