@@ -75,10 +75,22 @@ class AutopilotController private constructor(private val appContext: Context) {
         Logger.i("Selected game: ${game.name} (${game.packageName})")
     }
 
-    fun attachProjection(resultCode: Int, data: Intent) {
+    /**
+     * Split from the capture setup below on purpose: the caller (OverlayService)
+     * must call startForeground() with type mediaProjection right after this
+     * returns, before doing anything else — the OS's "didn't call
+     * startForeground in time" watchdog runs from the moment
+     * startForegroundService() was invoked, and VirtualDisplay creation
+     * (in startCapture) can be slow enough on some devices to blow that budget
+     * if it's allowed to run first.
+     */
+    fun registerProjection(resultCode: Int, data: Intent): MediaProjection {
         val mpm = appContext.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
             as MediaProjectionManager
-        val projection: MediaProjection = mpm.getMediaProjection(resultCode, data)
+        return mpm.getMediaProjection(resultCode, data)
+    }
+
+    fun startCapture(projection: MediaProjection) {
         val (w, h, dpi) = displayMetrics()
         capture.start(projection, w, h, dpi)
         _state.value = AutopilotState.Ready

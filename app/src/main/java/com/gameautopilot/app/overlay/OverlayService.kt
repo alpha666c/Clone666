@@ -99,14 +99,17 @@ class OverlayService : Service() {
     }
 
     /**
-     * On API 34+, the OS validates that a `mediaProjection`-typed foreground
-     * service has an actual registered MediaProjection before it'll let
-     * startForeground() through — call it too early (e.g. before consent is
-     * even granted) and you get a SecurityException at runtime, not a build
-     * error. So this service is only ever started (via
-     * ContextCompat.startForegroundService) *after* ProjectionRequestActivity
-     * already has the user's consent — startForegroundCompat() runs after
-     * controller.attachProjection() has registered the projection, never before.
+     * Two hard requirements collide here on API 34+, in this order:
+     * 1. startForeground() with type mediaProjection needs an already-registered
+     *    MediaProjection, or it throws SecurityException — so it can't run before
+     *    registerProjection().
+     * 2. startForegroundService() starts an OS watchdog that kills the process
+     *    with ForegroundServiceDidNotStartInTimeException if startForeground()
+     *    isn't called within a few seconds — so nothing slow (like creating the
+     *    VirtualDisplay, which can legitimately take a moment under memory/GPU
+     *    pressure) can run before it either.
+     * Hence the split: register (cheap) → startForeground (satisfies both
+     * constraints) → capture setup (however slow it needs to be, no deadline left).
      */
     private fun handleAttach(intent: Intent) {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
@@ -116,14 +119,21 @@ class OverlayService : Service() {
             handleQuit()
             return
         }
-        try {
-            controller.attachProjection(resultCode, data)
+        val projection = try {
+            controller.registerProjection(resultCode, data)
         } catch (t: Throwable) {
-            Logger.e("Failed to attach projection", t)
+            Logger.e("Failed to register projection", t)
             handleQuit()
             return
         }
         startForegroundCompat()
+        try {
+            controller.startCapture(projection)
+        } catch (t: Throwable) {
+            Logger.e("Failed to start capture", t)
+            handleQuit()
+            return
+        }
         acquireWakeLock()
         showOverlay()
         showDebugOverlayIfEnabled()
