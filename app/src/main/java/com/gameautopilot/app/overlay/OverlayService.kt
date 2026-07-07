@@ -52,8 +52,10 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Logger.i("OverlayService.onCreate start t=${android.os.SystemClock.elapsedRealtime()}")
         controller = AutopilotController.get(this)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        Logger.i("OverlayService.onCreate done t=${android.os.SystemClock.elapsedRealtime()}")
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -84,6 +86,7 @@ class OverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Logger.i("OverlayService.onStartCommand action=${intent?.action} t=${android.os.SystemClock.elapsedRealtime()}")
         when (intent?.action) {
             ACTION_ATTACH_PROJECTION -> handleAttach(intent)
             ACTION_QUIT -> {
@@ -112,6 +115,7 @@ class OverlayService : Service() {
      * constraints) → capture setup (however slow it needs to be, no deadline left).
      */
     private fun handleAttach(intent: Intent) {
+        Logger.i("handleAttach start t=${android.os.SystemClock.elapsedRealtime()}")
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
         val data: Intent? = intent.getParcelableExtra(EXTRA_RESULT_DATA)
         if (data == null) {
@@ -126,7 +130,9 @@ class OverlayService : Service() {
             handleQuit()
             return
         }
+        Logger.i("registerProjection done t=${android.os.SystemClock.elapsedRealtime()}")
         startForegroundCompat()
+        Logger.i("startForegroundCompat done t=${android.os.SystemClock.elapsedRealtime()}")
         try {
             controller.startCapture(projection)
         } catch (t: Throwable) {
@@ -134,6 +140,7 @@ class OverlayService : Service() {
             handleQuit()
             return
         }
+        Logger.i("startCapture done t=${android.os.SystemClock.elapsedRealtime()}")
         acquireWakeLock()
         showOverlay()
         showDebugOverlayIfEnabled()
