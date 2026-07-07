@@ -11,10 +11,10 @@ import androidx.recyclerview.widget.RecyclerView
 import com.gameautopilot.app.accessibility.AutopilotAccessibilityService
 import com.gameautopilot.app.core.AutopilotController
 import com.gameautopilot.app.data.Game
-import com.gameautopilot.app.overlay.OverlayService
 import com.gameautopilot.app.ui.AddGameActivity
 import com.gameautopilot.app.ui.GameListAdapter
 import com.gameautopilot.app.ui.PermissionsActivity
+import com.gameautopilot.app.ui.ProjectionRequestActivity
 import com.gameautopilot.app.ui.SettingsActivity
 import com.gameautopilot.app.util.PermissionsUtil
 import com.google.android.material.appbar.MaterialToolbar
@@ -102,6 +102,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         controller.selectGame(game)
-        OverlayService.prepareLaunch(this, game.id)
+        // MediaProjection consent must be granted BEFORE OverlayService starts as a
+        // mediaProjection-typed foreground service — Android 14+ throws a
+        // SecurityException on startForeground() otherwise (validated at runtime,
+        // not compile time). ProjectionRequestActivity gets consent, then it's the
+        // one that starts OverlayService via OverlayService.attachProjection().
+        startActivity(Intent(this, ProjectionRequestActivity::class.java))
     }
 }

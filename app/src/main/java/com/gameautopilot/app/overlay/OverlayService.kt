@@ -27,7 +27,6 @@ import com.gameautopilot.app.core.AutopilotController
 import com.gameautopilot.app.core.AutopilotState
 import com.gameautopilot.app.core.LoopPhase
 import com.gameautopilot.app.data.SettingsRepository
-import com.gameautopilot.app.ui.ProjectionRequestActivity
 import com.gameautopilot.app.util.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -86,7 +85,6 @@ class OverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_PREPARE -> handlePrepare(intent.getStringExtra(EXTRA_GAME_ID))
             ACTION_ATTACH_PROJECTION -> handleAttach(intent)
             ACTION_QUIT -> {
                 handleQuit()
@@ -100,15 +98,16 @@ class OverlayService : Service() {
         return START_STICKY
     }
 
-    private fun handlePrepare(gameId: String?) {
-        startForegroundCompat()
-        // Always request a fresh projection (token can't be reused across runs).
-        startActivity(
-            Intent(this, ProjectionRequestActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-    }
-
+    /**
+     * On API 34+, the OS validates that a `mediaProjection`-typed foreground
+     * service has an actual registered MediaProjection before it'll let
+     * startForeground() through — call it too early (e.g. before consent is
+     * even granted) and you get a SecurityException at runtime, not a build
+     * error. So this service is only ever started (via
+     * ContextCompat.startForegroundService) *after* ProjectionRequestActivity
+     * already has the user's consent — startForegroundCompat() runs after
+     * controller.attachProjection() has registered the projection, never before.
+     */
     private fun handleAttach(intent: Intent) {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
         val data: Intent? = intent.getParcelableExtra(EXTRA_RESULT_DATA)
@@ -124,6 +123,7 @@ class OverlayService : Service() {
             handleQuit()
             return
         }
+        startForegroundCompat()
         acquireWakeLock()
         showOverlay()
         showDebugOverlayIfEnabled()
@@ -354,20 +354,11 @@ class OverlayService : Service() {
 
     companion object {
         private const val MAX_WAKE_LOCK_MS = 6 * 60 * 60 * 1000L // 6h safety cap; renewed on each attach
-        const val ACTION_PREPARE = "com.gameautopilot.app.action.PREPARE"
         const val ACTION_ATTACH_PROJECTION = "com.gameautopilot.app.action.ATTACH"
         const val ACTION_QUIT = "com.gameautopilot.app.action.QUIT"
         const val ACTION_CANCEL = "com.gameautopilot.app.action.CANCEL"
-        const val EXTRA_GAME_ID = "extra_game_id"
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_RESULT_DATA = "extra_result_data"
-
-        fun prepareLaunch(context: Context, gameId: String) {
-            val intent = Intent(context, OverlayService::class.java)
-                .setAction(ACTION_PREPARE)
-                .putExtra(EXTRA_GAME_ID, gameId)
-            ContextCompat.startForegroundService(context, intent)
-        }
 
         fun attachProjection(context: Context, resultCode: Int, data: Intent) {
             val intent = Intent(context, OverlayService::class.java)
