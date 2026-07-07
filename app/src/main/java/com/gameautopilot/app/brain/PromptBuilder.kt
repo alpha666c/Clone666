@@ -21,6 +21,11 @@ EACH TURN YOU RECEIVE:
 - a flattened accessibility tree of clickable/text nodes with pixel bounds,
 - the device screen size (width x height pixels),
 - your last few actions,
+- LAST ACTION OUTCOME: whether the screen actually changed after what you
+  did last turn — this is your only feedback on whether your last action
+  worked. Use it. A tap that produces "no visible change" did nothing:
+  the element wasn't clickable, you missed it, or it needs a different
+  interaction (long-press, swipe, or a completely different mark).
 - your own MEMORY from previous turns (goal, unlocks, notes) — this is the
   only thing that survives between turns besides the screen itself,
 - optionally, RESEARCH NOTES if you asked to look something up last turn.
@@ -47,11 +52,20 @@ YOU MUST RESPOND WITH STRICT JSON of this exact shape and nothing else:
   }
 }
 
+EXAMPLE (shape only — read the actual marks/screen below, don't reuse these numbers):
+{"thought":"A \"Collect\" button is ready on the bakery, mark 4.","actions":[{"type":"tapMark","markId":4}],"confidence":0.9}
+
 RULES:
 - Prefer tapMark/longPressMark over raw tap whenever a mark covers your target.
 - Coordinates (when used) are absolute pixels. Stay inside [0, ${ctx.screenWidth}) x [0, ${ctx.screenHeight}).
 - Return 1-3 actions per turn. Prefer one action plus a wait if you are unsure.
 - If nothing meaningful changed since your last actions, return a single wait.
+- If LAST ACTION OUTCOME says the screen barely changed after a tap, do NOT
+  repeat that exact same tap — the target either wasn't interactive or you
+  missed it. Try a different mark, a swipe, a long-press, or BACK instead.
+- Lower your "confidence" when you're guessing (ambiguous marks, no clear
+  target, repeating after a failed attempt) rather than always reporting
+  high confidence — it changes how the app treats your response.
 - Only include "memory" when something worth remembering changed (a new
   goal, a new unlock, a mistake to avoid). Omitting "memory" entirely keeps
   the previous memory as-is. Including it REPLACES the whole record — so
@@ -74,9 +88,11 @@ RULES:
         val stuck = ctx.stuckHint?.let { "\nSTUCK HINT: $it\n" }.orEmpty()
         val memory = ctx.gameMemory.toPromptText()
         val research = ctx.researchNotes?.let { "\nRESEARCH NOTES (from your last webSearch):\n$it\n" }.orEmpty()
+        val lastOutcome = describeDelta(ctx.lastActionDelta)
         return """
 Screen size: ${ctx.screenWidth}x${ctx.screenHeight}
 Recent actions: $recent
+LAST ACTION OUTCOME: $lastOutcome
 $stuck
 MEMORY (your notes from previous turns):
 $memory
@@ -90,5 +106,13 @@ $ocr
 Accessibility nodes:
 $a11y
 """.trimIndent()
+    }
+
+    /** dHash Hamming distance is 0-64; these bands are tuned for "did my tap register" feedback. */
+    private fun describeDelta(delta: Int): String = when {
+        delta < 0 -> "(first turn — no prior screen to compare)"
+        delta <= 3 -> "screen barely changed since last turn (Δ$delta/64) — a tap here likely had no effect"
+        delta <= 15 -> "screen changed a little since last turn (Δ$delta/64)"
+        else -> "screen changed a lot since last turn (Δ$delta/64) — likely a real transition"
     }
 }

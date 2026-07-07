@@ -35,21 +35,21 @@ object PermissionsUtil {
         return false
     }
 
+    // No FLAG_ACTIVITY_NEW_TASK here on purpose: both of these are only ever called
+    // with an Activity context (PermissionsActivity). That flag launches Settings
+    // in a SEPARATE task, so the system Back button can't return to our app
+    // afterward — the user would have to use Recents or force-quit and reopen.
     fun openAccessibilitySettings(ctx: Context) {
-        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(intent)
+        ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
     fun hasOverlayPermission(ctx: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx)
 
     fun openOverlaySettings(ctx: Context) {
-        val intent = Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.parse("package:${ctx.packageName}")
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(intent)
+        ctx.startActivity(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
+        )
     }
 
     fun hasNotificationPermission(ctx: Context): Boolean =

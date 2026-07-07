@@ -10,6 +10,7 @@ import com.gameautopilot.app.core.AutopilotController
 import com.gameautopilot.app.data.BrainProvider
 import com.gameautopilot.app.data.OcrScript
 import com.gameautopilot.app.data.Settings
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputEditText
@@ -19,6 +20,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
+        findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener { finish() }
 
         val baseUrlInput = findViewById<TextInputEditText>(R.id.baseUrlInput)
         val modelInput = findViewById<TextInputEditText>(R.id.modelInput)

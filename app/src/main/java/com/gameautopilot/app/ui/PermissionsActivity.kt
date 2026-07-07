@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.gameautopilot.app.R
 import com.gameautopilot.app.accessibility.AutopilotAccessibilityService
 import com.gameautopilot.app.util.PermissionsUtil
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 
 class PermissionsActivity : AppCompatActivity() {
@@ -27,6 +28,7 @@ class PermissionsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_permissions)
+        findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener { finish() }
         rowAccessibility = findViewById(R.id.rowAccessibility)
         rowOverlay = findViewById(R.id.rowOverlay)
         rowNotifications = findViewById(R.id.rowNotifications)
@@ -64,7 +66,6 @@ class PermissionsActivity : AppCompatActivity() {
                     startActivity(
                         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                             .setData(android.net.Uri.parse("package:$packageName"))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 }
             }

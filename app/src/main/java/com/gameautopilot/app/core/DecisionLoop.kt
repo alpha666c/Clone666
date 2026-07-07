@@ -133,6 +133,7 @@ class DecisionLoop(
             a11yLines = snapshot.a11yLines,
             marks = snapshot.marks,
             recentActionLabels = recent.snapshot(),
+            lastActionDelta = delta,
             stuckHint = stuckHint,
             gameMemory = memory,
             researchNotes = researchNotes
@@ -186,7 +187,11 @@ class DecisionLoop(
         onState(LoopPhase.ACTING, decision.thought.take(80))
 
         val (labels, oks, extraWaitMs) = dispatchActions(decision.actions, snapshot)
-        fastPath?.recordBrainDispatch(decision.actions, snapshot.marks)
+        // Don't let a shaky guess seed the fast path — repeating an uncertain tap
+        // automatically for up to 3 ticks compounds one bad guess into several.
+        if (decision.confidence >= MIN_FAST_PATH_CONFIDENCE) {
+            fastPath?.recordBrainDispatch(decision.actions, snapshot.marks)
+        }
         onDebugFrame(snapshot.marks, (decision.actions.firstOrNull { it is Action.TapMark } as? Action.TapMark)?.markId)
         onCycle(CycleRecord(snapshot, decision.thought, labels, oks, delta))
 
@@ -241,6 +246,7 @@ class DecisionLoop(
         const val STUCK_DELTA = 5
         const val STUCK_TRIP = 6
         const val MAX_INTERRUPTION_ATTEMPTS = 5
+        const val MIN_FAST_PATH_CONFIDENCE = 0.5
     }
 }
 

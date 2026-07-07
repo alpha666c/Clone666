@@ -20,6 +20,8 @@ data class BrainContext(
     val a11yLines: List<String>,
     val marks: List<MarkBox>,
     val recentActionLabels: List<String>,
+    /** Perceptual-hash Hamming distance since the last tick (-1 if there is no prior tick). */
+    val lastActionDelta: Int = -1,
     val stuckHint: String? = null,
     /** Persistent per-game notes carried across ticks (and app restarts) — see GameMemoryStore. */
     val gameMemory: GameMemory = GameMemory(),
