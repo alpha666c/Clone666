@@ -65,30 +65,28 @@ class ScreenCaptureManager(private val appContext: Context) {
     }
 
     /**
-     * Recreates the VirtualDisplay + ImageReader at a new size without
-     * releasing the MediaProjection consent — used on rotation, where the
-     * user shouldn't have to re-grant capture permission just because the
-     * screen dimensions swapped.
+     * Resizes the *existing* VirtualDisplay in place — used on rotation, where
+     * the user shouldn't have to re-grant capture permission just because the
+     * screen dimensions swapped. Deliberately does NOT call
+     * MediaProjection#createVirtualDisplay again: a MediaProjection token is
+     * single-use for that call — Android throws SecurityException ("don't
+     * take multiple captures... on the same instance") the second time, no
+     * matter how the resulting VirtualDisplay is torn down first. VirtualDisplay
+     * itself supports resize()/setSurface() precisely for this case.
      */
     fun resize(newWidth: Int, newHeight: Int, densityDpi: Int) = synchronized(lock) {
-        val proj = projection
-        if (!running.get() || proj == null) return@synchronized
+        val vd = virtualDisplay
+        if (!running.get() || vd == null) return@synchronized
         if (newWidth == width && newHeight == height) return@synchronized
 
-        runCatching { virtualDisplay?.release() }
-        runCatching { reader?.close() }
-
+        val oldReader = reader
+        val newReader = ImageReader.newInstance(newWidth, newHeight, PixelFormat.RGBA_8888, 3)
+        vd.resize(newWidth, newHeight, densityDpi)
+        vd.surface = newReader.surface
+        reader = newReader
         width = newWidth
         height = newHeight
-        reader = ImageReader.newInstance(newWidth, newHeight, PixelFormat.RGBA_8888, 3)
-        virtualDisplay = proj.createVirtualDisplay(
-            "AutopilotCapture",
-            newWidth, newHeight, densityDpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            reader!!.surface,
-            null,
-            handler
-        )
+        runCatching { oldReader?.close() }
         Logger.i("ScreenCapture resized to ${newWidth}x$newHeight")
     }
 

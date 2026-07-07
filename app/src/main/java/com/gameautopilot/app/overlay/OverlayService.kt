@@ -20,6 +20,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import com.gameautopilot.app.App
 import com.gameautopilot.app.MainActivity
 import com.gameautopilot.app.R
@@ -119,7 +120,7 @@ class OverlayService : Service() {
      */
     private fun handleAttach(intent: Intent) {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
-        val data: Intent? = intent.getParcelableExtra(EXTRA_RESULT_DATA)
+        val data: Intent? = IntentCompat.getParcelableExtra(intent, EXTRA_RESULT_DATA, Intent::class.java)
         if (data == null) {
             Logger.w("No projection data; quitting")
             handleQuit()
