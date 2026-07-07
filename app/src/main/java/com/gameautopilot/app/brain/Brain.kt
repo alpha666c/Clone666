@@ -22,11 +22,18 @@ data class BrainContext(
     val recentActionLabels: List<String>,
     /** Perceptual-hash Hamming distance since the last tick (-1 if there is no prior tick). */
     val lastActionDelta: Int = -1,
+    /** Rolling log of "action → effect" pairs from recent ticks — see DecisionLoop's outcome ring. */
+    val recentActionOutcomes: List<String> = emptyList(),
     val stuckHint: String? = null,
     /** Persistent per-game notes carried across ticks (and app restarts) — see GameMemoryStore. */
     val gameMemory: GameMemory = GameMemory(),
     /** Ephemeral, one-tick-only web research result — see WebSearchProvider. Not persisted. */
-    val researchNotes: String? = null
+    val researchNotes: String? = null,
+    /** Calibrated grid dimensions, 0 if this game has no BoardConfig. */
+    val boardRows: Int = 0,
+    val boardCols: Int = 0,
+    /** Cell colors read straight off the current frame — see BoardReader. Null if no board. */
+    val boardCells: List<List<String>>? = null
 )
 
 data class BrainDecision(

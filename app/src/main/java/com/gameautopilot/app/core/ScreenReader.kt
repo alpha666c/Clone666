@@ -5,8 +5,10 @@ import com.gameautopilot.app.accessibility.AutopilotAccessibilityService
 import com.gameautopilot.app.accessibility.NodeTreeReader
 import com.gameautopilot.app.capture.ScreenCaptureManager
 import com.gameautopilot.app.capture.ScreenshotEncoder
+import com.gameautopilot.app.data.BoardConfig
 import com.gameautopilot.app.util.Logger
 import com.gameautopilot.app.util.PerceptualHash
+import com.gameautopilot.app.vision.BoardReader
 import com.gameautopilot.app.vision.CandidateExtractor
 import com.gameautopilot.app.vision.OcrEngine
 import com.gameautopilot.app.vision.SetOfMarksOverlay
@@ -21,7 +23,7 @@ import kotlinx.coroutines.withContext
  * DecisionLoop.
  */
 interface ScreenReader {
-    suspend fun read(useMarks: Boolean): ScreenSnapshot?
+    suspend fun read(useMarks: Boolean, board: BoardConfig? = null): ScreenSnapshot?
 }
 
 /** Default [ScreenReader]: MediaProjection capture + ML Kit OCR + a11y node tree + set-of-marks. */
@@ -30,7 +32,7 @@ class DefaultScreenReader(
     private val ocr: OcrEngine
 ) : ScreenReader {
 
-    override suspend fun read(useMarks: Boolean): ScreenSnapshot? = withContext(Dispatchers.Default) {
+    override suspend fun read(useMarks: Boolean, board: BoardConfig?): ScreenSnapshot? = withContext(Dispatchers.Default) {
         val bmp: Bitmap = capture.captureLatest() ?: return@withContext null
         val w = bmp.width
         val h = bmp.height
@@ -48,6 +50,12 @@ class DefaultScreenReader(
             emptyList()
         }
         val hash = PerceptualHash.dHash(bmp)
+        val boardState = board?.let {
+            runCatching { BoardReader.read(bmp, it) }.getOrElse { e ->
+                Logger.w("Board read failed: ${e.message}")
+                null
+            }
+        }
         val toEncode = if (useMarks && marks.isNotEmpty()) {
             SetOfMarksOverlay.annotate(bmp, marks)
         } else {
@@ -64,7 +72,8 @@ class DefaultScreenReader(
             a11yLines = a11y.lines,
             marks = marks,
             screenshotBase64Jpeg = base64,
-            perceptualHash = hash
+            perceptualHash = hash,
+            boardState = boardState
         )
     }
 }

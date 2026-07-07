@@ -12,6 +12,14 @@ sealed class Action {
         val x2: Int, val y2: Int,
         val durationMs: Long = 300
     ) : Action()
+    /** Tap cell (row, col) of the game's calibrated BoardConfig, if one is set. */
+    data class TapCell(val row: Int, val col: Int) : Action()
+    /** Swap cell (row, col) with the adjacent cell (toRow, toCol) — board-relative match-3 swipe. */
+    data class SwipeCell(
+        val row: Int, val col: Int,
+        val toRow: Int, val toCol: Int,
+        val durationMs: Long = 180
+    ) : Action()
     data class TypeText(val text: String, val submit: Boolean = false) : Action()
     data class WebSearch(val query: String) : Action()
     data class Wait(val ms: Long) : Action()
@@ -24,6 +32,8 @@ sealed class Action {
         is LongPress -> "long($x,$y,${durationMs}ms)"
         is LongPressMark -> "longMark($markId,${durationMs}ms)"
         is Swipe -> "swipe($x1,$y1→$x2,$y2)"
+        is TapCell -> "tapCell($row,$col)"
+        is SwipeCell -> "swipeCell($row,$col→$toRow,$toCol)"
         is TypeText -> "type(${text.take(20)}${if (submit) "+enter" else ""})"
         is WebSearch -> "webSearch(${query.take(30)})"
         is Wait -> "wait(${ms}ms)"
@@ -59,6 +69,20 @@ sealed class Action {
                     y2 = o.optInt("y2", -1),
                     durationMs = o.optLong("durationMs", 300L)
                 ).takeIf { it.x1 >= 0 && it.y1 >= 0 && it.x2 >= 0 && it.y2 >= 0 }
+                "tapcell", "tap_cell" -> {
+                    val row = o.optInt("row", -1)
+                    val col = o.optInt("col", -1)
+                    if (row >= 0 && col >= 0) TapCell(row, col) else null
+                }
+                "swipecell", "swipe_cell" -> {
+                    val row = o.optInt("row", -1)
+                    val col = o.optInt("col", -1)
+                    val toRow = o.optInt("toRow", -1)
+                    val toCol = o.optInt("toCol", -1)
+                    if (row >= 0 && col >= 0 && toRow >= 0 && toCol >= 0)
+                        SwipeCell(row, col, toRow, toCol, o.optLong("durationMs", 180L))
+                    else null
+                }
                 "typetext", "type_text", "type" -> {
                     val text = o.optString("text", "")
                     if (text.isNotEmpty()) TypeText(text, o.optBoolean("submit", false)) else null

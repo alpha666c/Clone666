@@ -15,6 +15,15 @@
     <string name="game_name_hint">Game name (e.g. Coin Master)</string>
     <string name="game_prompt_hint">What should the AI do? (per-game knowledge + goal)</string>
     <string name="tick_interval_hint">Tick interval (ms)</string>
+    <string name="board_enable">This game has a grid board (match-3, slot reels, bingo card…)</string>
+    <string name="board_help">Take a screenshot of the game with the board visible, then measure its bounds as a percentage of the FULL screen (0%% = left/top edge, 100%% = right/bottom edge). Rows/cols is the grid size, e.g. 8x8 for a typical match-3 board.</string>
+    <string name="board_rows">Rows</string>
+    <string name="board_cols">Columns</string>
+    <string name="board_left_pct">Left %%</string>
+    <string name="board_top_pct">Top %%</string>
+    <string name="board_right_pct">Right %%</string>
+    <string name="board_bottom_pct">Bottom %%</string>
+    <string name="board_invalid">Board rows/cols and bounds don\'t add up — check the numbers (right/bottom must be greater than left/top).</string>
     <string name="save">Save</string>
     <string name="delete">Delete</string>
     <string name="cancel">Cancel</string>

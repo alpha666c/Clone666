@@ -8,7 +8,9 @@ data class Game(
     val name: String,
     val packageName: String,
     val systemPrompt: String,
-    val tickIntervalMs: Long = 1500L
+    val tickIntervalMs: Long = 1500L,
+    /** Optional calibrated grid (match-3 board, slot reels, bingo card, ...) — see BoardConfig. */
+    val board: BoardConfig? = null
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -16,6 +18,7 @@ data class Game(
         put("packageName", packageName)
         put("systemPrompt", systemPrompt)
         put("tickIntervalMs", tickIntervalMs)
+        board?.let { put("board", it.toJson()) }
     }
 
     companion object {
@@ -24,7 +27,8 @@ data class Game(
             name = o.optString("name", "Unnamed"),
             packageName = o.optString("packageName", ""),
             systemPrompt = o.optString("systemPrompt", ""),
-            tickIntervalMs = o.optLong("tickIntervalMs", 1500L).coerceIn(250L, 60_000L)
+            tickIntervalMs = o.optLong("tickIntervalMs", 1500L).coerceIn(250L, 60_000L),
+            board = BoardConfig.fromJson(o.optJSONObject("board"))
         )
     }
 }

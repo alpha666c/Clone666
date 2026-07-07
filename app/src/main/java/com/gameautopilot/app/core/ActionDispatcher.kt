@@ -2,13 +2,15 @@ package com.gameautopilot.app.core
 
 import com.gameautopilot.app.accessibility.AutopilotAccessibilityService
 import com.gameautopilot.app.accessibility.GestureDispatcher
+import com.gameautopilot.app.data.BoardConfig
 import com.gameautopilot.app.util.Logger
 import kotlinx.coroutines.delay
 
 /** Default [ActionExecutor]: dispatches via the accessibility service's synthetic gestures. */
 class ActionDispatcher(
     private val screenWidth: () -> Int,
-    private val screenHeight: () -> Int
+    private val screenHeight: () -> Int,
+    private val board: () -> BoardConfig? = { null }
 ) : ActionExecutor {
 
     override suspend fun dispatch(action: Action, marks: List<MarkBox>): Boolean {
@@ -47,6 +49,32 @@ class ActionDispatcher(
                     action.x2.toFloat(), action.y2.toFloat(),
                     action.durationMs
                 )
+            }
+            is Action.TapCell -> {
+                val cfg = board()
+                if (cfg == null) {
+                    Logger.w("tapCell dispatched but no board is calibrated for this game")
+                    false
+                } else {
+                    val (cx, cy) = cfg.cellCenter(action.row, action.col, w, h)
+                    tap(svc, cx, cy, 60, w, h)
+                }
+            }
+            is Action.SwipeCell -> {
+                val cfg = board()
+                if (cfg == null) {
+                    Logger.w("swipeCell dispatched but no board is calibrated for this game")
+                    false
+                } else {
+                    val (x1, y1) = cfg.cellCenter(action.row, action.col, w, h)
+                    val (x2, y2) = cfg.cellCenter(action.toRow, action.toCol, w, h)
+                    if (!inBounds(x1, y1, w, h) || !inBounds(x2, y2, w, h)) {
+                        Logger.w("Skipping out-of-bounds swipeCell")
+                        false
+                    } else {
+                        GestureDispatcher.swipe(svc, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), action.durationMs)
+                    }
+                }
             }
             is Action.TypeText -> svc.typeOnFocused(action.text, action.submit)
             Action.Back -> GestureDispatcher.back(svc)

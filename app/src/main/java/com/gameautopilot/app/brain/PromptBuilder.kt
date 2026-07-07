@@ -26,10 +26,16 @@ EACH TURN YOU RECEIVE:
   worked. Use it. A tap that produces "no visible change" did nothing:
   the element wasn't clickable, you missed it, or it needs a different
   interaction (long-press, swipe, or a completely different mark).
+- RECENT ACTION OUTCOMES: a short log of your last several actions and
+  whether each one changed the screen. This is real measured history, not
+  your own recollection — trust it over your own memory of what you tried.
+  If the same action keeps showing "no effect", stop repeating it.
 - your own MEMORY from previous turns (goal, unlocks, notes) — this is the
   only thing that survives between turns besides the screen itself,
 - optionally, RESEARCH NOTES if you asked to look something up last turn.
-
+- optionally, a BOARD: a calibrated grid over part of the screen, with each
+  cell's dominant color already computed for you (see below).
+${boardSchema(ctx)}
 YOU MUST RESPOND WITH STRICT JSON of this exact shape and nothing else:
 {
   "thought": "one sentence describing what you see and intend",
@@ -38,6 +44,8 @@ YOU MUST RESPOND WITH STRICT JSON of this exact shape and nothing else:
     or {"type":"longPressMark","markId":<int>,"durationMs":<int>}
     or {"type":"tap","x":<int>,"y":<int>}              <-- fallback when no mark fits
     or {"type":"swipe","x1":<int>,"y1":<int>,"x2":<int>,"y2":<int>,"durationMs":<int>}
+    or {"type":"tapCell","row":<int>,"col":<int>}      <-- only when a BOARD is given below
+    or {"type":"swipeCell","row":<int>,"col":<int>,"toRow":<int>,"toCol":<int>} <-- swap two board cells
     or {"type":"typeText","text":"...","submit":<bool>}
     or {"type":"webSearch","query":"..."}               <-- research a game mechanic online
     or {"type":"wait","ms":<int>}
@@ -61,6 +69,9 @@ RULES:
   NOT part of the game, has no close button you can reach, and never
   needs dismissing. Ignore it completely and keep playing.
 - Prefer tapMark/longPressMark over raw tap whenever a mark covers your target.
+- When a BOARD is given, ALWAYS use tapCell/swipeCell instead of raw tap/swipe
+  for anything inside the board area — the coordinates are computed exactly
+  from calibration, so there's no guessing involved and it will not miss.
 - Coordinates (when used) are absolute pixels. Stay inside [0, ${ctx.screenWidth}) x [0, ${ctx.screenHeight}).
 - Return 1-3 actions per turn. Prefer one action plus a wait if you are unsure.
 - If nothing meaningful changed since your last actions, return a single wait.
@@ -81,6 +92,19 @@ RULES:
 - Never include text outside the JSON object.
 """.trimIndent()
 
+    private fun boardSchema(ctx: BrainContext): String {
+        if (ctx.boardCells == null) return ""
+        return """
+
+This game has a calibrated ${ctx.boardRows}x${ctx.boardCols} grid BOARD — row 0
+is the top row, col 0 is the left column. Its current cell colors are given to
+you every turn under BOARD below, read directly off the screen (not a guess).
+For a match-3-style board, look for two ADJACENT cells (row/col differ by
+exactly 1 in one axis) that, if swapped, would line up 3+ same-colored cells
+in a row or column, then send that as one swipeCell action.
+"""
+    }
+
     fun userText(ctx: BrainContext): String {
         val ocr = ctx.ocrLines.take(40).joinToString("\n").ifBlank { "(none)" }
         val a11y = ctx.a11yLines.take(40).joinToString("\n").ifBlank { "(none)" }
@@ -93,14 +117,24 @@ RULES:
         val memory = ctx.gameMemory.toPromptText()
         val research = ctx.researchNotes?.let { "\nRESEARCH NOTES (from your last webSearch):\n$it\n" }.orEmpty()
         val lastOutcome = describeDelta(ctx.lastActionDelta)
+        val outcomes = ctx.recentActionOutcomes.takeLast(10).joinToString("\n").ifBlank { "(none yet)" }
+        val board = ctx.boardCells?.let { grid ->
+            buildString {
+                appendLine("BOARD (${ctx.boardRows} rows x ${ctx.boardCols} cols, row 0 = top, col 0 = left):")
+                grid.forEachIndexed { r, row -> appendLine("row $r: ${row.joinToString(", ")}") }
+            }.trim() + "\n\n"
+        }.orEmpty()
         return """
 Screen size: ${ctx.screenWidth}x${ctx.screenHeight}
 Recent actions: $recent
 LAST ACTION OUTCOME: $lastOutcome
+RECENT ACTION OUTCOMES:
+$outcomes
 $stuck
 MEMORY (your notes from previous turns):
 $memory
 $research
+$board
 MARKS:
 $marks
 

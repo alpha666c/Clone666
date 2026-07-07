@@ -41,7 +41,8 @@ class AutopilotController private constructor(private val appContext: Context) {
     private val rate = RateLimiter(maxPerMinute = settingsRepo.current().maxActionsPerMinute)
     private val dispatcher: ActionExecutor = ActionDispatcher(
         screenWidth = { capture.width },
-        screenHeight = { capture.height }
+        screenHeight = { capture.height },
+        board = { currentGame?.board }
     )
     private var screenReader: ScreenReader = DefaultScreenReader(capture, ocr)
     private val cycleLog = CycleLog(appContext).apply {
@@ -127,7 +128,7 @@ class AutopilotController private constructor(private val appContext: Context) {
         val useMarks = s.useSetOfMarks
         fastPath = if (s.useFastPath) A11yFastPath() else null
         val loop = DecisionLoop(
-            takeSnapshot = { screenReader.read(useMarks) },
+            takeSnapshot = { screenReader.read(useMarks, game.board) },
             brain = brain!!,
             dispatcher = dispatcher,
             recent = recent,

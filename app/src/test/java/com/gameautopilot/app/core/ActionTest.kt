@@ -82,6 +82,17 @@ class ActionTest {
     }
 
     @Test
+    fun `parses tapCell and swipeCell`() {
+        assertEquals(Action.TapCell(2, 3), Action.fromJson(json("""{"type":"tapCell","row":2,"col":3}""")))
+        assertNull(Action.fromJson(json("""{"type":"tapCell","row":2}""")))
+        assertEquals(
+            Action.SwipeCell(2, 3, 2, 4, 180),
+            Action.fromJson(json("""{"type":"swipeCell","row":2,"col":3,"toRow":2,"toCol":4}"""))
+        )
+        assertNull(Action.fromJson(json("""{"type":"swipeCell","row":2,"col":3,"toRow":2}""")))
+    }
+
+    @Test
     fun `shortLabel is human-readable and stable`() {
         assertEquals("tap(1,2)", Action.Tap(1, 2).shortLabel())
         assertEquals("tapMark(3)", Action.TapMark(3).shortLabel())

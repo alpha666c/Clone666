@@ -42,6 +42,8 @@ class DecisionLoop(
 ) {
 
     private val recentHashes = ArrayDeque<Long>(STUCK_WINDOW)
+    private val outcomeHistory = ArrayDeque<String>(OUTCOME_HISTORY_SIZE)
+    private var lastActionLabel: String? = null
     private var stuckCount = 0
     private var interruptionAttempts = 0
     @Volatile private var memory: GameMemory = initialMemory
@@ -98,6 +100,7 @@ class DecisionLoop(
                 )
                 onState(LoopPhase.ACTING, "Dismissing interruption…")
                 val (labels, oks, extraWaitMs) = dispatchActions(listOf(recovery), snapshot)
+                lastActionLabel = labels.joinToString(" + ")
                 onCycle(
                     CycleRecord(
                         snapshot,
@@ -114,6 +117,7 @@ class DecisionLoop(
         interruptionAttempts = 0
 
         val delta = recentHashes.lastOrNull()?.let { PerceptualHash.hamming(it, snapshot.perceptualHash) } ?: -1
+        lastActionLabel?.let { recordOutcome(it, delta) }
         recordHash(snapshot.perceptualHash)
         val stuck = isStuck()
         val stuckHint = if (stuck) {
@@ -135,6 +139,7 @@ class DecisionLoop(
             if (fastActions != null) {
                 onState(LoopPhase.ACTING, "fast-path")
                 val (labels, oks, extraWaitMs) = dispatchActions(fastActions, snapshot)
+                lastActionLabel = labels.joinToString(" + ")
                 onDebugFrame(snapshot.marks, (fastActions.firstOrNull() as? Action.TapMark)?.markId)
                 onCycle(CycleRecord(snapshot, "(fast-path repeat)", labels, oks, delta))
                 return baseTickIntervalMs + extraWaitMs
@@ -156,9 +161,13 @@ class DecisionLoop(
             marks = snapshot.marks,
             recentActionLabels = recent.snapshot(),
             lastActionDelta = delta,
+            recentActionOutcomes = outcomeHistory.toList(),
             stuckHint = stuckHint,
             gameMemory = memory,
-            researchNotes = researchNotes
+            researchNotes = researchNotes,
+            boardRows = snapshot.boardState?.rows ?: 0,
+            boardCols = snapshot.boardState?.cols ?: 0,
+            boardCells = snapshot.boardState?.cellColors
         )
 
         val decision = try {
@@ -209,6 +218,7 @@ class DecisionLoop(
         onState(LoopPhase.ACTING, decision.thought.take(80))
 
         val (labels, oks, extraWaitMs) = dispatchActions(decision.actions, snapshot)
+        lastActionLabel = labels.joinToString(" + ")
         // Don't let a shaky guess seed the fast path — repeating an uncertain tap
         // automatically for up to 3 ticks compounds one bad guess into several.
         if (decision.confidence >= MIN_FAST_PATH_CONFIDENCE) {
@@ -252,6 +262,22 @@ class DecisionLoop(
         return Triple(labels, oks, extraWaitMs)
     }
 
+    /**
+     * Ground-truth (not brain-recalled) log of "action → measured effect", so the
+     * brain can spot patterns across many ticks ("that swipe never works") instead
+     * of only ever seeing the single most recent outcome.
+     */
+    private fun recordOutcome(actionLabel: String, delta: Int) {
+        if (delta < 0) return // no baseline yet (first tick) — nothing to attribute
+        val word = when {
+            delta <= 3 -> "no effect"
+            delta <= 15 -> "small change"
+            else -> "big change"
+        }
+        if (outcomeHistory.size >= OUTCOME_HISTORY_SIZE) outcomeHistory.removeFirst()
+        outcomeHistory.addLast("$actionLabel → $word (Δ$delta)")
+    }
+
     private fun recordHash(h: Long) {
         if (recentHashes.size >= STUCK_WINDOW) recentHashes.removeFirst()
         recentHashes.addLast(h)
@@ -269,6 +295,7 @@ class DecisionLoop(
         const val STUCK_TRIP = 6
         const val MAX_INTERRUPTION_ATTEMPTS = 5
         const val MIN_FAST_PATH_CONFIDENCE = 0.5
+        const val OUTCOME_HISTORY_SIZE = 10
     }
 }
 
