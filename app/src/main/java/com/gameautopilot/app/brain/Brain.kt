@@ -7,6 +7,15 @@ import com.gameautopilot.app.data.GameMemory
 /** The "Reasoner" seam: whatever decides what to do next from a BrainContext. */
 interface Brain {
     suspend fun decide(ctx: BrainContext): BrainDecision
+
+    /**
+     * Self-calibration: asks the same vision model to look at one raw screenshot
+     * and report whether it sees a grid board and where — the alternative to
+     * having the user hand-measure percentages. Returns null if no board is
+     * found or the call fails; callers should treat that as "try again later"
+     * rather than a hard error (e.g. the board may not be on screen yet).
+     */
+    suspend fun detectBoard(screenshotBase64Jpeg: String): BoardDetection?
 }
 
 data class BrainContext(

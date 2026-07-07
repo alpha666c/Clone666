@@ -7,10 +7,13 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import com.gameautopilot.app.App
 import com.gameautopilot.app.brain.Brain
 import com.gameautopilot.app.brain.BrainFactory
 import com.gameautopilot.app.brain.BraveSearchProvider
 import com.gameautopilot.app.capture.ScreenCaptureManager
+import com.gameautopilot.app.capture.ScreenshotEncoder
+import com.gameautopilot.app.data.BoardConfig
 import com.gameautopilot.app.data.Game
 import com.gameautopilot.app.data.GameMemoryStore
 import com.gameautopilot.app.data.Settings
@@ -184,6 +187,46 @@ class AutopilotController private constructor(private val appContext: Context) {
         }
         Logger.i("Autopilot started for ${game.name}")
         return true
+    }
+
+    /**
+     * Self-calibration: grabs the current live frame and asks the configured
+     * vision brain to locate a grid board in it, instead of making the user
+     * hand-measure percentages. Works whether or not the tick loop is running —
+     * only needs a live capture and an API key — so it can be triggered right
+     * after launching a game, before ever pressing Start.
+     */
+    suspend fun calibrateBoard(): CalibrationResult {
+        val game = currentGame ?: return CalibrationResult.Error("No game selected")
+        if (!isProjectionReady()) return CalibrationResult.Error("Screen capture not ready")
+        val s = settingsRepo.current()
+        if (!s.hasApiKey()) return CalibrationResult.Error("API key not set")
+        val activeBrain = brain ?: BrainFactory.create(s)
+        val bmp = capture.captureLatest() ?: return CalibrationResult.Error("No frame available")
+        val base64 = try {
+            ScreenshotEncoder.encode(bmp)
+        } finally {
+            bmp.recycle()
+        }
+        val detection = try {
+            activeBrain.detectBoard(base64)
+        } catch (t: Throwable) {
+            Logger.e("Board calibration failed", t)
+            return CalibrationResult.Error(t.message ?: "calibration failed")
+        } ?: return CalibrationResult.NotFound
+        val cfg = detection.toBoardConfig()
+            ?: return CalibrationResult.Error("Model returned an invalid board shape (${detection.rows}x${detection.cols})")
+        val updated = game.copy(board = cfg)
+        App.get().gameRepository.upsert(updated)
+        currentGame = updated
+        Logger.i("Board calibrated for ${game.name}: ${cfg.rows}x${cfg.cols}")
+        return CalibrationResult.Success(cfg)
+    }
+
+    sealed class CalibrationResult {
+        data class Success(val config: BoardConfig) : CalibrationResult()
+        data object NotFound : CalibrationResult()
+        data class Error(val message: String) : CalibrationResult()
     }
 
     /**

@@ -27,6 +27,17 @@
         android:text="@string/overlay_state_idle" />
 
     <ImageView
+        android:id="@+id/calibrateBtn"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="10dp"
+        android:contentDescription="@string/calibrate_board"
+        android:padding="6dp"
+        android:src="@drawable/ic_grid"
+        app:tint="@color/white"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+    <ImageView
         android:id="@+id/startBtn"
         android:layout_width="36dp"
         android:layout_height="36dp"

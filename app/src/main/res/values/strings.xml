@@ -24,6 +24,11 @@
     <string name="board_right_pct">Right %%</string>
     <string name="board_bottom_pct">Bottom %%</string>
     <string name="board_invalid">Board rows/cols and bounds don\'t add up — check the numbers (right/bottom must be greater than left/top).</string>
+    <string name="calibrate_board">Auto-calibrate board</string>
+    <string name="calibrating">Looking for a grid board…</string>
+    <string name="calibrate_board_success">Board calibrated: %1$dx%2$d</string>
+    <string name="calibrate_board_not_found">No grid board found on screen right now — try again once the board is visible.</string>
+    <string name="calibrate_board_error">Calibration failed: %1$s</string>
     <string name="save">Save</string>
     <string name="delete">Delete</string>
     <string name="cancel">Cancel</string>

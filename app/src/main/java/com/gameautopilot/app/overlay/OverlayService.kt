@@ -18,6 +18,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
@@ -264,10 +265,12 @@ class OverlayService : Service() {
             y = 120
         }
 
+        val calibrateBtn = view.findViewById<ImageView>(R.id.calibrateBtn)
         val startBtn = view.findViewById<ImageView>(R.id.startBtn)
         val stopBtn = view.findViewById<ImageView>(R.id.stopBtn)
         val closeBtn = view.findViewById<ImageView>(R.id.closeBtn)
 
+        calibrateBtn.setOnClickListener { runCalibration() }
         startBtn.setOnClickListener {
             if (!controller.start()) {
                 renderError(controller.state.value)
@@ -279,6 +282,28 @@ class OverlayService : Service() {
         attachDrag(view, params)
         wm.addView(view, params)
         overlayView = view
+    }
+
+    /**
+     * The self-calibration engine: rather than making the user hand-measure
+     * board percentages, grab the frame that's on screen right now and ask
+     * the configured vision brain to locate the grid itself. Works whether or
+     * not autopilot is running — the point is to calibrate the moment the
+     * board is visible, before or after pressing Start.
+     */
+    private fun runCalibration() {
+        Toast.makeText(this, R.string.calibrating, Toast.LENGTH_SHORT).show()
+        scope.launch {
+            val msg = when (val result = controller.calibrateBoard()) {
+                is AutopilotController.CalibrationResult.Success ->
+                    getString(R.string.calibrate_board_success, result.config.rows, result.config.cols)
+                AutopilotController.CalibrationResult.NotFound ->
+                    getString(R.string.calibrate_board_not_found)
+                is AutopilotController.CalibrationResult.Error ->
+                    getString(R.string.calibrate_board_error, result.message)
+            }
+            Toast.makeText(this@OverlayService, msg, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun attachDrag(view: View, params: WindowManager.LayoutParams) {
