@@ -25,7 +25,12 @@ class AutopilotAccessibilityService : AccessibilityService() {
             event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) {
             val pkg = event.packageName?.toString()
-            if (!pkg.isNullOrBlank() && pkg != "com.android.systemui") {
+            // Our own overlay chip updates its status text every tick (Idle/Thinking/
+            // Acting), which fires TYPE_WINDOW_CONTENT_CHANGED with our own package —
+            // without this exclusion that was constantly overwriting foregroundPackage
+            // with our own app, making the loop think the game got interrupted by
+            // itself on every single tick.
+            if (!pkg.isNullOrBlank() && pkg != "com.android.systemui" && pkg != packageName) {
                 foregroundPackage = pkg
             }
         }
