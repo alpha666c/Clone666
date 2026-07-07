@@ -56,6 +56,10 @@ EXAMPLE (shape only — read the actual marks/screen below, don't reuse these nu
 {"thought":"A \"Collect\" button is ready on the bakery, mark 4.","actions":[{"type":"tapMark","markId":4}],"confidence":0.9}
 
 RULES:
+- You may see a small solid black rectangle near a corner of the screen —
+  that is our own status chip, redacted from your view on purpose. It is
+  NOT part of the game, has no close button you can reach, and never
+  needs dismissing. Ignore it completely and keep playing.
 - Prefer tapMark/longPressMark over raw tap whenever a mark covers your target.
 - Coordinates (when used) are absolute pixels. Stay inside [0, ${ctx.screenWidth}) x [0, ${ctx.screenHeight}).
 - Return 1-3 actions per turn. Prefer one action plus a wait if you are unsure.

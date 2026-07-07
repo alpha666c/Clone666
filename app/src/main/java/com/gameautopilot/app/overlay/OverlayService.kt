@@ -172,7 +172,8 @@ class OverlayService : Service() {
                 @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                or WindowManager.LayoutParams.FLAG_SECURE,
             PixelFormat.TRANSLUCENT
         )
         runCatching { wm.addView(view, params) }.onFailure {
@@ -254,7 +255,17 @@ class OverlayService : Service() {
                 @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                // This window is composited straight into the MediaProjection capture
+                // that feeds OCR and the brain's own screenshot — without FLAG_SECURE,
+                // the brain was literally reading its own status chip ("I will tap the
+                // 'X' button to dismiss the overlay...") back as on-screen game text,
+                // and OCR was turning that chip's close icon into a tappable "mark",
+                // sending the brain into a loop trying to dismiss its own status
+                // display. FLAG_SECURE blacks this window out in any screen capture
+                // (ours included, since MediaProjection's virtual display is
+                // non-secure) while leaving it fully visible to the human on-device.
+                or WindowManager.LayoutParams.FLAG_SECURE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
